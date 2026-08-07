@@ -1,0 +1,6 @@
+# Python 3.11+ (tested with 3.14).
+# Versions are minimums so prebuilt wheels exist for newer Python releases.
+fastapi>=0.115.6
+uvicorn>=0.34.0
+pydantic>=2.11.0
+pydantic-settings>=2.7.0

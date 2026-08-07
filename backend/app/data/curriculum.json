@@ -1,0 +1,62 @@
+{
+  "id": "curriculum-001",
+  "title": "Full-Stack Engineering Interview Path",
+  "description": "Adaptive technical interview roadmap covering core software engineering topics for a full-stack candidate.",
+  "version": "1.0.0",
+  "topics": [
+    {
+      "id": "topic-python",
+      "title": "Python Fundamentals",
+      "description": "Data structures, comprehensions, typing, and common idioms.",
+      "weight": 1.2,
+      "questions": [
+        {
+          "id": "py-001",
+          "text": "Explain the difference between a list and a tuple in Python.",
+          "difficulty": "easy",
+          "expects": ["immutable", "mutable", "performance", "hashable"]
+        },
+        {
+          "id": "py-002",
+          "text": "Describe how Python's GIL affects multithreaded programs.",
+          "difficulty": "hard",
+          "expects": ["global interpreter lock", "thread safety", "io-bound", "cpu-bound"]
+        }
+      ]
+    },
+    {
+      "id": "topic-databases",
+      "title": "Databases & SQL",
+      "description": "Relational modeling, indexing, and query performance.",
+      "weight": 1.0,
+      "questions": [
+        {
+          "id": "db-001",
+          "text": "Explain the differences between a primary key and a foreign key.",
+          "difficulty": "easy",
+          "expects": ["unique", "referential integrity", "relationship"]
+        },
+        {
+          "id": "db-002",
+          "text": "How does a B-tree index speed up query lookups?",
+          "difficulty": "medium",
+          "expects": ["logarithmic", "tree structure", "selectivity"]
+        }
+      ]
+    },
+    {
+      "id": "topic-systems",
+      "title": "System Design",
+      "description": "Scalability, APIs, caching, and distributed systems basics.",
+      "weight": 1.4,
+      "questions": [
+        {
+          "id": "sd-001",
+          "text": "Design a URL shortener. What are the key components?",
+          "difficulty": "hard",
+          "expects": ["hash function", "database", "caching", "load balancer"]
+        }
+      ]
+    }
+  ]
+}

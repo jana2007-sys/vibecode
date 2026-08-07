@@ -1,0 +1,33 @@
+{
+  "id": "candidate-001",
+  "name": "Alex Rivera",
+  "role": "Backend Engineer",
+  "years_of_experience": 2.0,
+  "skills": [
+    { "name": "Python", "level": "intermediate" },
+    { "name": "SQL", "level": "beginner" },
+    { "name": "Django", "level": "intermediate" },
+    { "name": "Docker", "level": "beginner" },
+    { "name": "System Design", "level": "beginner" }
+  ],
+  "learning_journey": [
+    {
+      "type": "course",
+      "title": "Python for Everybody",
+      "description": "Completed an introductory Python course covering core language features."
+    },
+    {
+      "type": "project",
+      "title": "RESTful Blog API",
+      "description": "Built a Django REST API with JWT auth and a small SQLite database."
+    },
+    {
+      "type": "practice",
+      "title": "LeetCode / Codewars",
+      "description": "Regular practice on algorithm and data-structure problems, easy-to-medium."
+    }
+  ],
+  "preferred_languages": ["Python", "JavaScript"],
+  "focus_areas": ["Backend API design", "Databases", "Testing"],
+  "notes": "Prefers practical examples over theory; learning SQL depth and system design next."
+}
