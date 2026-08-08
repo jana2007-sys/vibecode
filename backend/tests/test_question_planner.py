@@ -426,19 +426,24 @@ class TestDevelopmentMode:
         assert plan.completeness_metadata["missing_questions"] == 3
         assert "incomplete" in plan.completeness_metadata["reason"]
 
-    def test_full_curriculum_selects_every_question(self, curriculum: Curriculum) -> None:
+    def test_full_curriculum_is_capped_at_min_questions(self, curriculum: Curriculum) -> None:
+        """The 13-question bank still yields an 8-question plan in dev mode."""
         plan = _plan_for(_analysis_a(), curriculum, development_mode=True)
-        assert plan.total_questions == 13
+        assert plan.total_questions == 8
         assert plan.is_complete is True
         assert plan.completeness_metadata["missing_topics"] == 0
         assert plan.completeness_metadata["missing_questions"] == 0
 
-    def test_dev_mode_questions_are_grounded_and_unique(self, curriculum: Curriculum) -> None:
+    def test_dev_mode_questions_are_grounded_unique_and_subset(
+        self, curriculum: Curriculum
+    ) -> None:
+        """Dev mode selects a unique 8-question subset, never the whole bank."""
         plan = _plan_for(_analysis_a(), curriculum, development_mode=True)
         supplied_ids = {q.id for topic in curriculum.topics for q in topic.questions}
         planned_ids = {q.curriculum_question_id for q in plan.questions}
-        assert planned_ids == supplied_ids
-        assert len(planned_ids) == plan.total_questions
+        assert len(planned_ids) == plan.total_questions == 8
+        assert planned_ids <= supplied_ids
+        assert planned_ids != supplied_ids
 
     def test_tiny_curriculum_single_question(self) -> None:
         tiny = Curriculum(
@@ -471,7 +476,9 @@ class TestDevelopmentMode:
             development_mode=True,
         )
         plan = planner.create_plan("candidate-001", "curriculum-001")
-        assert plan.total_questions == 40
+        # The 40-question bank is never asked wholesale: dev mode still caps the
+        # plan at MIN_QUESTIONS primary questions.
+        assert plan.total_questions == 8
         assert plan.is_complete is True
 
     def test_app_di_plans_real_curriculum_in_development_env(self) -> None:
@@ -479,9 +486,9 @@ class TestDevelopmentMode:
 
         Phase 6 regression guard: with the default ``app_env == development``
         the dependency graph builds the planner in development mode, so
-        ``POST /api/interview`` can actually start. The shipped curriculum
-        (4 topics / 40 questions) exceeds the production minimums, so even in
-        production mode a complete plan can be built.
+        ``POST /api/interview`` can actually start. Even in dev mode the
+        40-question bank is capped: exactly ``MIN_QUESTIONS`` primary questions
+        are planned, never the whole bank.
         """
         settings = Settings()
         assert settings.app_env == "development"
@@ -491,7 +498,8 @@ class TestDevelopmentMode:
             development_mode=settings.app_env != "production",
         )
         plan = planner.create_plan("candidate-001", "curriculum-001")
-        assert plan.total_questions == 40
+        assert plan.total_questions == 8
+        assert len(plan.questions) == 8
         assert plan.is_complete is True
 
     def test_per_call_override_beats_constructor_default(self, curriculum: Curriculum) -> None:
@@ -500,7 +508,8 @@ class TestDevelopmentMode:
             candidate_analyzer=CandidateAnalyzer(data_dir=Path()),
         )
         plan = planner.plan_for(_analysis_a(), curriculum, development_mode=True)
-        assert plan.total_questions == 13
+        # 13 questions available -> still capped at the 8-question interview.
+        assert plan.total_questions == 8
         assert plan.is_complete is True
 
     def test_production_mode_still_rejects_partial_curriculum(self) -> None:

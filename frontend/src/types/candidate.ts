@@ -22,6 +22,7 @@ export interface CandidateProfile {
   name: string;
   role?: string;
   years_of_experience?: number;
+  experience_level?: string;
   skills: SkillLevel[];
   learning_journey: LearningJourneyEntry[];
   preferred_languages?: string[];

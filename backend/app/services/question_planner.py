@@ -1,11 +1,13 @@
 """Question planning.
 
 Builds a deterministic, personalized interview plan from the candidate analysis
-and the curriculum. Every planned question is grounded in a curriculum question
-template (no invented text), and a complete plan guarantees a minimum of 8
-questions covering at least 4 distinct curriculum topics. In development mode
-those minimums are waived so in-progress curricula can be previewed; such plans
-are flagged via ``InterviewPlan.is_complete`` and ``completeness_metadata``.
+and the curriculum. The curriculum is a question bank of grounded templates (no
+invented text): the planner selects an 8-question plan from that bank, so no
+candidate is ever asked the whole bank. A complete plan guarantees a minimum of
+8 questions covering at least 4 distinct curriculum topics. In development mode
+the minimums are waived only for in-progress curricula that offer fewer than 8
+questions, allowing partial plans to be previewed; such plans are flagged via
+``InterviewPlan.is_complete`` and ``completeness_metadata``.
 
 Planning is fully deterministic: given the same candidate analysis and
 curriculum it always produces the same plan. Gemini-based adaptive planning will
@@ -127,11 +129,17 @@ class QuestionPlanner:
     ) -> InterviewPlan:
         """Build a plan from an already-validated analysis and curriculum.
 
-        In production mode (the default) the curriculum must support a complete
-        plan: at least ``MIN_TOPICS`` usable topics (topics with questions) and
-        ``MIN_QUESTIONS`` available questions. In development mode those minimums
-        are waived so in-progress curricula can be previewed; the resulting plan
-        is marked ``is_complete=False`` with metadata describing the shortfall.
+        The curriculum is a question bank: plans always contain at most
+        ``MIN_QUESTIONS`` grounded primary questions (never the whole bank), so
+        every candidate is asked exactly ``MIN_QUESTIONS`` questions when the
+        bank offers at least that many. In production mode (the default) the
+        curriculum must support a complete plan: at least ``MIN_TOPICS`` usable
+        topics (topics with questions) and ``MIN_QUESTIONS`` available questions.
+        In development mode those minimums are waived so in-progress curricula
+        can be previewed — but only when fewer than ``MIN_QUESTIONS`` questions
+        are available; a full bank is still capped at ``MIN_QUESTIONS``. Partial
+        plans are marked ``is_complete=False`` with metadata describing the
+        shortfall.
 
         Args:
             development_mode: per-call override of the constructor default;
@@ -154,7 +162,14 @@ class QuestionPlanner:
         keywords = self._candidate_keywords(analysis)
         ranked = self._rank_topics(analysis, usable, keywords)
         ordered, skipped_ids = self._order_for_skipped(analysis, ranked)
-        target_count = None if development_mode else MIN_QUESTIONS
+        # The curriculum is a question bank: the interview always asks at most
+        # MIN_QUESTIONS primary questions, never the whole bank. Development mode
+        # only waives the minimums for in-progress curricula (fewer than 8
+        # questions available), previewing every question such a curriculum
+        # offers. A full bank is always capped at MIN_QUESTIONS.
+        target_count = (
+            None if development_mode and available < MIN_QUESTIONS else MIN_QUESTIONS
+        )
         difficulty_bias = self._difficulty_bias(analysis)
         selected = self._select_questions(
             ordered, skipped_ids, target_count, keywords, difficulty_bias=difficulty_bias
