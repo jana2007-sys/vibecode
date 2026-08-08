@@ -41,3 +41,46 @@ class Curriculum(BaseModelConfig):
     description: str = Field(default="")
     version: str = Field(default="1.0.0")
     topics: list[Topic] = Field(default_factory=list)
+
+
+class PlannedQuestion(BaseModelConfig):
+    """A single grounded interview question within a plan.
+
+    Produced by ``QuestionPlanner``. Every question is grounded in a curriculum
+    ``QuestionTemplate`` (``text`` and ``expects`` are taken verbatim); dynamic
+    follow-ups are never generated here.
+    """
+
+    sequence: int = Field(ge=1, description="1-based position within the interview.")
+    topic_id: Id
+    curriculum_question_id: Id
+    text: str = Field(min_length=1, description="Question text, verbatim from the curriculum.")
+    difficulty: str = Field(description="Difficulty label, preserved from the curriculum.")
+    expects: list[str] = Field(
+        default_factory=list,
+        description="Concepts an ideal answer should mention (from the curriculum).",
+    )
+    question_type: str = Field(
+        default="conceptual",
+        description="conceptual | explanation | comparison | troubleshooting | scenario | architecture",
+    )
+    follow_up_allowed: bool = Field(
+        default=True,
+        description="Whether the InterviewEngine may ask a dynamic follow-up after this question.",
+    )
+
+
+class InterviewPlan(BaseModelConfig):
+    """A deterministic, personalized interview plan.
+
+    Produced by ``QuestionPlanner``. Guarantees a minimum of 8 grounded
+    questions covering at least 4 distinct curriculum topics.
+    """
+
+    candidate_id: Id
+    curriculum_id: Id
+    total_questions: int = Field(ge=8, description="Number of planned questions (minimum 8).")
+    topics_covered: list[str] = Field(
+        description="Distinct topic ids covered, in first-appearance order."
+    )
+    questions: list[PlannedQuestion] = Field(min_length=8)

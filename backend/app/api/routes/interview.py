@@ -1,20 +1,23 @@
-"""Interview endpoints — SKELETON ONLY.
+"""Interview endpoints.
 
-These routes define the stable wire contract. Responses are placeholders that
-mirror the future payload shape; no interview logic or Gemini calls happen here.
+The primary interactive contract is a single ``POST /api/interview`` endpoint:
+the first call carries a ``candidate`` to start the interview and every
+subsequent call carries a ``message`` (the candidate's answer). The legacy
+start/answer/complete routes remain for backwards compatibility with the
+earlier skeleton contract.
 """
 
 from __future__ import annotations
 
-from typing import Annotated
-
 from fastapi import APIRouter
 
-from app.api.deps import SessionManagerDep
+from app.api.deps import InterviewEngineDep, SessionManagerDep
 from app.models.interview import (
     AnswerRequest,
     AnswerResponse,
     CompleteInterviewResponse,
+    InterviewTurnRequest,
+    InterviewTurnResponse,
     StartInterviewRequest,
     StartInterviewResponse,
 )
@@ -24,16 +27,27 @@ from app.utils.errors import NotFoundError
 router = APIRouter()
 
 
-@router.post("/interview", response_model=StartInterviewResponse)
+@router.post("/interview", response_model=InterviewTurnResponse)
+async def interview_turn(
+    body: InterviewTurnRequest,
+    interview_engine: InterviewEngineDep,
+) -> InterviewTurnResponse:
+    """Run one interactive interview turn.
+
+    With ``candidate`` set this starts the interview; with ``message`` set it
+    processes the candidate's answer and returns the next interviewer turn.
+    """
+    if body.candidate is not None:
+        return interview_engine.start(body.session_id, body.candidate)
+    return interview_engine.handle_answer(body.session_id, body.message)
+
+
+@router.post("/interview/legacy", response_model=StartInterviewResponse)
 async def start_interview(
     body: StartInterviewRequest,
     session_manager: SessionManagerDep,
 ) -> StartInterviewResponse:
-    """Create a new interview session.
-
-    Placeholder: the session row is persisted; the introduction message and
-    first question are hard-coded until InterviewEngine is implemented.
-    """
+    """Create a new interview session (legacy skeleton contract)."""
     session = session_manager.create_session(body)
     return StartInterviewResponse(
         session_id=session.id,

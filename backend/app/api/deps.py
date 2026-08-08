@@ -16,7 +16,17 @@ from app.database.repositories.feedback_repository import FeedbackRepository
 from app.database.repositories.message_repository import MessageRepository
 from app.database.repositories.score_repository import ScoreRepository
 from app.database.repositories.session_repository import SessionRepository
+from app.memory.conversation_memory import ConversationMemory
+from app.services.candidate_analyzer import CandidateAnalyzer
+from app.services.curriculum_loader import CurriculumLoader
+from app.services.evaluation_engine import EvaluationEngine
+from app.services.feedback_generator import FeedbackGenerator
+from app.services.gemini_service import GeminiService
+from app.services.interview_engine import InterviewEngine
+from app.services.memory_engine import MemoryEngine
+from app.services.question_planner import QuestionPlanner
 from app.services.session_manager import SessionManager
+from app.utils.config import get_settings
 
 
 def get_session_repository(
@@ -54,8 +64,103 @@ def get_session_manager(
     return SessionManager(session_repository=sessions)
 
 
+def get_curriculum_loader() -> CurriculumLoader:
+    """Provide the CurriculumLoader backed by the shipped curriculum data."""
+    return CurriculumLoader()
+
+
+def get_candidate_analyzer() -> CandidateAnalyzer:
+    """Provide the CandidateAnalyzer backed by the shipped candidate data."""
+    return CandidateAnalyzer()
+
+
+def get_gemini_service() -> GeminiService:
+    """Provide the Gemini client (inert until explicitly enabled)."""
+    return GeminiService(get_settings())
+
+
+def get_conversation_memory() -> ConversationMemory:
+    """Provide a fresh in-memory conversation store."""
+    return ConversationMemory()
+
+
+def get_memory_engine(
+    memory: Annotated[ConversationMemory, Depends(get_conversation_memory)],
+    gemini_service: Annotated[GeminiService, Depends(get_gemini_service)],
+) -> MemoryEngine:
+    """Provide the MemoryEngine maintaining rolling conversation context."""
+    return MemoryEngine(conversation_memory=memory, gemini_service=gemini_service)
+
+
+def get_question_planner(
+    curriculum_loader: Annotated[CurriculumLoader, Depends(get_curriculum_loader)],
+    candidate_analyzer: Annotated[CandidateAnalyzer, Depends(get_candidate_analyzer)],
+    memory_engine: Annotated[MemoryEngine, Depends(get_memory_engine)],
+) -> QuestionPlanner:
+    """Provide the QuestionPlanner used to build interview plans."""
+    return QuestionPlanner(
+        curriculum_loader=curriculum_loader,
+        candidate_analyzer=candidate_analyzer,
+        memory_engine=memory_engine,
+    )
+
+
+def get_evaluation_engine(
+    gemini_service: Annotated[GeminiService, Depends(get_gemini_service)],
+    score_repository: Annotated[ScoreRepository, Depends(get_score_repository)],
+    message_repository: Annotated[MessageRepository, Depends(get_message_repository)],
+) -> EvaluationEngine:
+    """Provide the EvaluationEngine that scores candidate answers."""
+    return EvaluationEngine(
+        gemini_service=gemini_service,
+        score_repository=score_repository,
+        message_repository=message_repository,
+    )
+
+
+def get_feedback_generator(
+    evaluation_engine: Annotated[EvaluationEngine, Depends(get_evaluation_engine)],
+    score_repository: Annotated[ScoreRepository, Depends(get_score_repository)],
+    feedback_repository: Annotated[FeedbackRepository, Depends(get_feedback_repository)],
+    gemini_service: Annotated[GeminiService, Depends(get_gemini_service)],
+    session_repository: Annotated[SessionRepository, Depends(get_session_repository)],
+) -> FeedbackGenerator:
+    """Provide the FeedbackGenerator that produces the final report."""
+    return FeedbackGenerator(
+        evaluation_engine=evaluation_engine,
+        score_repository=score_repository,
+        feedback_repository=feedback_repository,
+        gemini_service=gemini_service,
+        session_repository=session_repository,
+    )
+
+
+def get_interview_engine(
+    session_manager: Annotated[SessionManager, Depends(get_session_manager)],
+    question_planner: Annotated[QuestionPlanner, Depends(get_question_planner)],
+    evaluation_engine: Annotated[EvaluationEngine, Depends(get_evaluation_engine)],
+    memory_engine: Annotated[MemoryEngine, Depends(get_memory_engine)],
+    curriculum_loader: Annotated[CurriculumLoader, Depends(get_curriculum_loader)],
+    candidate_analyzer: Annotated[CandidateAnalyzer, Depends(get_candidate_analyzer)],
+    feedback_generator: Annotated[FeedbackGenerator, Depends(get_feedback_generator)],
+    message_repository: Annotated[MessageRepository, Depends(get_message_repository)],
+) -> InterviewEngine:
+    """Provide the top-level InterviewEngine for the interactive contract."""
+    return InterviewEngine(
+        session_manager,
+        question_planner,
+        evaluation_engine,
+        memory_engine,
+        curriculum_loader=curriculum_loader,
+        candidate_analyzer=candidate_analyzer,
+        feedback_generator=feedback_generator,
+        message_repository=message_repository,
+    )
+
+
 SessionManagerDep = Annotated[SessionManager, Depends(get_session_manager)]
 SessionRepositoryDep = Annotated[SessionRepository, Depends(get_session_repository)]
 MessageRepositoryDep = Annotated[MessageRepository, Depends(get_message_repository)]
 ScoreRepositoryDep = Annotated[ScoreRepository, Depends(get_score_repository)]
 FeedbackRepositoryDep = Annotated[FeedbackRepository, Depends(get_feedback_repository)]
+InterviewEngineDep = Annotated[InterviewEngine, Depends(get_interview_engine)]

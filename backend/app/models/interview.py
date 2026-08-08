@@ -7,11 +7,62 @@ frontend can be built before the business logic exists.
 
 from __future__ import annotations
 
-from pydantic import Field
+from pydantic import ConfigDict, Field, model_validator
 
+from app.models.candidate import CandidateProfile
 from app.models.common import BaseModelConfig, Id
 from app.models.session import InterviewState
 from app.models.message import MessageRole
+
+
+class InterviewTurnRequest(BaseModelConfig):
+    """Body of POST /api/interview (the interactive interview contract).
+
+    The first call carries a ``candidate`` to start the interview; every
+    subsequent call carries a ``message`` (the candidate's answer). Exactly one
+    of the two must be present.
+    """
+
+    session_id: Id = Field(alias="sessionId")
+    candidate: CandidateProfile | None = None
+    message: str | None = Field(default=None, min_length=1, max_length=20000)
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        extra="forbid",
+        use_enum_values=True,
+        populate_by_name=True,
+    )
+
+    @model_validator(mode="after")
+    def _require_exactly_one_input(self) -> "InterviewTurnRequest":
+        has_candidate = self.candidate is not None
+        has_message = self.message is not None
+        if has_candidate == has_message:
+            raise ValueError(
+                "Provide exactly one of 'candidate' (to start) or 'message' (to answer)"
+            )
+        return self
+
+
+class InterviewFeedback(BaseModelConfig):
+    """Structured feedback returned when an interview completes."""
+
+    summary: str
+    strengths: list[str] = Field(default_factory=list)
+    gaps: list[str] = Field(default_factory=list)
+    next: list[str] = Field(default_factory=list)
+
+
+class InterviewTurnResponse(BaseModelConfig):
+    """Response to every POST /api/interview call."""
+
+    reply: str = Field(min_length=1, description="Interviewer's message.")
+    done: bool = Field(default=False, description="True when the interview is complete.")
+    feedback: InterviewFeedback | None = Field(
+        default=None,
+        description="Present only when ``done`` is True.",
+    )
 
 
 class StartInterviewRequest(BaseModelConfig):

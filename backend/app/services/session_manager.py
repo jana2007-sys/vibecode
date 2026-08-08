@@ -28,12 +28,14 @@ class SessionManager:
         self._sessions = session_repository
         self._state_machine = state_machine or StateMachine()
 
-    def create_session(self, data: SessionCreate) -> SessionRead:
+    def create_session(self, data: SessionCreate, session_id: str | None = None) -> SessionRead:
         """Create and persist a new session in the START state.
 
-        Placeholder: persists the row, but no interview logic runs yet.
+        When ``session_id`` is given it is used as the primary key (allowing the
+        interactive engine to honor client-supplied ids); otherwise one is
+        generated.
         """
-        session_id = new_uuid()
+        session_id = session_id or new_uuid()
         now = utc_now()
         self._sessions.create(
             session_id=session_id,
@@ -53,6 +55,23 @@ class SessionManager:
             raise NotFoundError(f"Session {session_id} not found")
         row["context"] = self._sessions.loads_json(row.get("context"), {})
         return SessionRead(**row)
+
+    def update_context(
+        self,
+        session_id: str,
+        context: dict,
+        *,
+        topic_index: int | None = None,
+    ) -> SessionRead:
+        """Replace a session's context (and optionally its topic index)."""
+        current = self.get_session(session_id)
+        self._sessions.update_state(
+            session_id,
+            current.state,
+            topic_index=topic_index,
+            context=context,
+        )
+        return self.get_session(session_id)
 
     def advance(self, session_id: str, target: InterviewState) -> SessionRead:
         """Validate and persist a state transition for a session."""
