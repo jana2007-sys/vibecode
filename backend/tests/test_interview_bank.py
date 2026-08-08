@@ -3,7 +3,7 @@
 Guards the two behavioral contracts the UI depends on:
 
 1. **Question bank semantics.** The shipped curriculum (``curriculum-001``) is a
-   question *bank* of 40 grounded questions. A single interview must ask exactly
+   question *bank* of 52 grounded questions. A single interview must ask exactly
    ``MIN_QUESTIONS`` (8) primary questions, never the whole bank, never repeat a
    question, and cover at least ``MIN_TOPICS`` (4) topics. Follow-up questions
    deepen the current primary — they must not be counted as new primary
@@ -35,8 +35,8 @@ from tests.test_personalization_e2e import EXPECTED_QUESTION_IDS, _build_stack, 
 REAL_DATA_DIR = Path(__file__).resolve().parents[1] / "app" / "data"
 
 #: The full shipped bank size — guards that the "never the whole bank" asserts
-#: are actually exercised against a 40-question curriculum.
-BANK_SIZE = 40
+#: are actually exercised against a 52-question curriculum.
+BANK_SIZE = 52
 
 
 def _custom_profile(
@@ -103,8 +103,8 @@ def stack(tmp_path: Path):
 
 class TestQuestionBankSemantics:
     def test_fixture_is_the_full_bank(self, stack) -> None:
-        """Sanity guard: the curriculum really is the 40-question bank."""
-        assert BANK_SIZE == len(_bank_question_ids(stack)) == 40
+        """Sanity guard: the curriculum really is the 52-question bank."""
+        assert BANK_SIZE == len(_bank_question_ids(stack)) == 52
         assert len(stack.curriculum.topics) == 4
 
     def test_full_session_asks_exactly_min_questions_never_the_bank(
@@ -117,7 +117,7 @@ class TestQuestionBankSemantics:
         asked = [q["curriculum_question_id"] for q in context["asked_questions"]]
         assert len(context["plan"]["questions"]) == MIN_QUESTIONS == 8
         assert len(asked) == MIN_QUESTIONS == 8
-        # The 40-question bank is never dumped wholesale into one interview.
+        # The 52-question bank is never dumped wholesale into one interview.
         assert set(asked) != _bank_question_ids(stack)
 
     def test_no_question_repeats_within_a_session(self, stack) -> None:

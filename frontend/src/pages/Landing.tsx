@@ -132,7 +132,7 @@ export function Landing() {
 
           {/* Decorative interview preview */}
           <div className="animate-fade-up mt-16 w-full max-w-lg [animation-delay:240ms]">
-            <Card className="p-5 text-left">
+            <Card className="lift-glow p-5 text-left">
               <div className="flex items-start gap-3">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-lg shadow-indigo-500/30">
                   <SparklesIcon className="h-4 w-4" />
@@ -170,7 +170,7 @@ export function Landing() {
           {features.map((feature) => (
             <Card
               key={feature.title}
-              className="group relative overflow-hidden p-6 transition-all duration-300 hover:-translate-y-1 hover:border-white/20 hover:bg-white/[0.06]"
+              className="lift-glow group relative overflow-hidden border-white/10 bg-white/[0.04] p-6 hover:border-white/20 hover:bg-white/[0.06]"
             >
               <div
                 className={`pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-gradient-to-br to-transparent ${feature.glow} blur-2xl`}
@@ -219,7 +219,7 @@ export function Landing() {
 
       {/* Trust / technology */}
       <section className="mx-auto max-w-7xl px-4 pb-20 sm:px-6 lg:px-8">
-        <Card className="p-6 sm:p-10">
+        <Card className="lift-glow p-6 sm:p-10">
           <div className="flex flex-col gap-3 text-center">
             <h2 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
               What powers the interviewer

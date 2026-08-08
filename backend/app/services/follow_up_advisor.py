@@ -172,7 +172,13 @@ class FollowUpAdvisor:
 
     @staticmethod
     def _deterministic_fallback(question: dict, evaluation: dict) -> FollowUpDecision:
-        """Mirror the classic heuristic: probe the first missing concept."""
+        """Mirror the classic heuristic: probe a gap only when coverage is weak.
+
+        A follow-up fires only when the answer addresses fewer than half of the
+        expected concepts (strictly more missing than covered), so a candidate
+        who covered most of a question is not nagged about the rest. The probe
+        is worded supportively and names a concrete curriculum concept.
+        """
         if not question.get("follow_up_allowed", False):
             return FollowUpDecision(
                 should_follow_up=False,
@@ -182,6 +188,7 @@ class FollowUpAdvisor:
                 source=DETERMINISTIC_SOURCE,
             )
         missing = [concept for concept in evaluation.get("missing", []) if concept]
+        covered = [concept for concept in evaluation.get("covered", []) if concept]
         if not missing:
             return FollowUpDecision(
                 should_follow_up=False,
@@ -190,13 +197,24 @@ class FollowUpAdvisor:
                 target_concept=None,
                 source=DETERMINISTIC_SOURCE,
             )
+        if len(covered) >= len(missing):
+            return FollowUpDecision(
+                should_follow_up=False,
+                reason=(
+                    "Deterministic fallback: answer covered at least half of the "
+                    "expected concepts, so no follow-up is needed."
+                ),
+                question="",
+                target_concept=None,
+                source=DETERMINISTIC_SOURCE,
+            )
         concept = missing[0]
         return FollowUpDecision(
             should_follow_up=True,
-            reason="Deterministic fallback: expected concept not addressed.",
+            reason="Deterministic fallback: most expected concepts not addressed.",
             question=(
-                f"You didn't mention '{concept}'. Could you explain how "
-                f"'{concept}' relates to your answer?"
+                f"Let's go a level deeper. Can you tell me more about "
+                f"'{concept}' and how it connects to your answer?"
             ),
             target_concept=concept,
             source=DETERMINISTIC_SOURCE,

@@ -3,7 +3,7 @@
 Uses a synthetic 5-topic curriculum fixture (13 grounded questions across easy /
 medium / hard) plus constructed candidate analyses so personalization, skipped
 topic handling, difficulty progression, and error paths are all deterministic.
-The real shipped curriculum (4 topics / 40 questions) is used to verify that a
+The real shipped curriculum (4 topics / 52 questions) is used to verify that a
 production-mode plan can be built against it.
 """
 
@@ -309,7 +309,7 @@ class TestPlanGeneration:
         assert len(set(plan.topics_covered)) >= MIN_TOPICS
 
     def test_real_curriculum_builds_complete_plan(self) -> None:
-        """The shipped curriculum now meets production minimums (4 topics / 40 questions)."""
+        """The shipped curriculum now meets production minimums (4 topics / 52 questions)."""
         planner = QuestionPlanner(
             curriculum_loader=CurriculumLoader(),
             candidate_analyzer=CandidateAnalyzer(),
@@ -476,7 +476,7 @@ class TestDevelopmentMode:
             development_mode=True,
         )
         plan = planner.create_plan("candidate-001", "curriculum-001")
-        # The 40-question bank is never asked wholesale: dev mode still caps the
+        # The 52-question bank is never asked wholesale: dev mode still caps the
         # plan at MIN_QUESTIONS primary questions.
         assert plan.total_questions == 8
         assert plan.is_complete is True
@@ -487,7 +487,7 @@ class TestDevelopmentMode:
         Phase 6 regression guard: with the default ``app_env == development``
         the dependency graph builds the planner in development mode, so
         ``POST /api/interview`` can actually start. Even in dev mode the
-        40-question bank is capped: exactly ``MIN_QUESTIONS`` primary questions
+         52-question bank is capped: exactly ``MIN_QUESTIONS`` primary questions
         are planned, never the whole bank.
         """
         settings = Settings()

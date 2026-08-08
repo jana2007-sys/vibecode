@@ -404,11 +404,16 @@ class InterviewEngine:
 
         if not missing:
             return None
+        # Only probe a gap when the answer missed more concepts than it covered,
+        # so a candidate who addressed most of the question is not nagged about
+        # the remainder.
+        if len(covered) >= len(missing):
+            return None
         concept = missing[0]
         return {
             "question": self._build_follow_up(question, concept),
             "target_concept": concept,
-            "reason": "deterministic: expected concept not addressed",
+            "reason": "deterministic: most expected concepts not addressed",
             "source": "deterministic",
         }
 
@@ -524,8 +529,8 @@ class InterviewEngine:
     @staticmethod
     def _build_follow_up(question: dict, concept: str) -> str:
         return (
-            f"You didn't mention '{concept}'. Could you explain how "
-            f"'{concept}' relates to your answer?"
+            f"Let's go a level deeper. Can you tell me more about "
+            f"'{concept}' and how it connects to your answer?"
         )
 
     @staticmethod

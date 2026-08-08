@@ -19,6 +19,7 @@ planning; kept for the future interactive engine).
 
 from __future__ import annotations
 
+import hashlib
 import math
 import re
 from collections import Counter
@@ -70,6 +71,17 @@ _TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
 def _tokenize(text: str) -> set[str]:
     """Return the normalized lowercase alphanumeric tokens of ``text``."""
     return set(_TOKEN_PATTERN.findall(text.lower()))
+
+
+def _stable_hash(*parts: str) -> int:
+    """Deterministic 64-bit hash, stable across runs and processes.
+
+    ``hash()`` is randomized per process via ``PYTHONHASHSEED``, so it is never
+    used to derive plan variety: the same candidate must produce the same plan
+    on every process and machine.
+    """
+    digest = hashlib.sha256("|".join(parts).encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], "big")
 
 
 def _prefix_match(left: str, right: str) -> bool:
@@ -126,6 +138,7 @@ class QuestionPlanner:
         curriculum: Curriculum,
         *,
         development_mode: bool | None = None,
+        variety_seed: str | None = None,
     ) -> InterviewPlan:
         """Build a plan from an already-validated analysis and curriculum.
 
@@ -141,9 +154,19 @@ class QuestionPlanner:
         plans are marked ``is_complete=False`` with metadata describing the
         shortfall.
 
+        ``variety_seed`` rotates *which* questions are drawn from the bank so
+        different candidates receive different questions even when their
+        profiles overlap. The rotation is fully deterministic: the same
+        ``(analysis, curriculum, variety_seed)`` always yields the same plan.
+        When ``variety_seed`` is ``None`` it defaults to the candidate id, so a
+        candidate's plan is stable across sessions and machines while two
+        candidates (with different ids) get distinct question decks.
+
         Args:
             development_mode: per-call override of the constructor default;
                 ``None`` (the default) keeps the constructor setting.
+            variety_seed: per-call override of the candidate-derived deck seed;
+                ``None`` (the default) derives it from ``analysis.candidate_id``.
 
         Raises:
             ValidationError: in production mode, when the curriculum has fewer
@@ -153,6 +176,8 @@ class QuestionPlanner:
         """
         if development_mode is None:
             development_mode = self._development_mode
+        if variety_seed is None:
+            variety_seed = analysis.candidate_id
 
         usable = [topic for topic in curriculum.topics if topic.questions]
         available = sum(len(topic.questions) for topic in usable)
@@ -172,7 +197,12 @@ class QuestionPlanner:
         )
         difficulty_bias = self._difficulty_bias(analysis)
         selected = self._select_questions(
-            ordered, skipped_ids, target_count, keywords, difficulty_bias=difficulty_bias
+            ordered,
+            skipped_ids,
+            target_count,
+            keywords,
+            difficulty_bias=difficulty_bias,
+            variety_seed=variety_seed,
         )
         logger.debug(
             "Selected questions for candidate %s: %s",
@@ -391,6 +421,7 @@ class QuestionPlanner:
         keywords: dict[str, float] | None = None,
         *,
         difficulty_bias: str | None = None,
+        variety_seed: str | None = None,
     ) -> list[tuple[Topic, QuestionTemplate]]:
         """Select up to ``target_count`` grounded questions.
 
@@ -410,6 +441,13 @@ class QuestionPlanner:
              swapping a late non-unique-topic question for the missing tier so
              the harder question lands near the end (realistic progression).
 
+        ``variety_seed`` rotates the order questions are considered inside each
+        topic (via :meth:`_seeded_questions`), so different candidates draw
+        different questions from the bank while every structural guarantee
+        (coverage, tiers, difficulty guards, uniqueness) is preserved. A
+        ``None`` seed disables rotation and keeps the classic deterministic
+        curriculum order.
+
         ``target_count`` caps the selected size. A ``None`` target (development
         mode) selects every available question and skips the variety guards so
         in-progress curricula can be previewed in full.
@@ -425,7 +463,9 @@ class QuestionPlanner:
         for topic in ordered:
             if topic.id in skipped_ids and not include_skipped:
                 continue
-            question = self._easiest_available(topic, used, bias_rank=bias_rank)
+            question = self._easiest_available(
+                topic, used, bias_rank=bias_rank, variety_seed=variety_seed
+            )
             if question is not None:
                 selected.append((topic, question))
                 used.add(question.id)
@@ -435,7 +475,7 @@ class QuestionPlanner:
             for topic in ordered:
                 if topic.id in skipped_ids and not include_skipped:
                     continue
-                for question in topic.questions:
+                for question in self._seeded_questions(topic, variety_seed):
                     if question.id in used or self._difficulty_rank(question.difficulty) != tier_rank:
                         continue
                     selected.append((topic, question))
@@ -450,10 +490,28 @@ class QuestionPlanner:
         if target_count is None:
             return selected
 
-        self._ensure_tier("medium", selected, ordered, used)
-        self._ensure_tier("hard", selected, ordered, used)
+        self._ensure_tier("medium", selected, ordered, used, variety_seed=variety_seed)
+        self._ensure_tier("hard", selected, ordered, used, variety_seed=variety_seed)
 
         return selected[:target_count]
+
+    @staticmethod
+    def _seeded_questions(
+        topic: Topic, variety_seed: str | None
+    ) -> list[QuestionTemplate]:
+        """The topic's questions in seeded rotation order (stable per seed).
+
+        With a ``variety_seed`` the order is a deterministic function of the
+        seed plus each question id, so different candidates meet the topic's
+        questions in a different (but reproducible) order. With ``None`` the
+        curriculum order is preserved.
+        """
+        if not variety_seed:
+            return list(topic.questions)
+        return sorted(
+            topic.questions,
+            key=lambda question: _stable_hash(variety_seed, topic.id, question.id),
+        )
 
     @staticmethod
     def _tier_order(difficulty_bias: str | None) -> tuple[str, ...]:
@@ -468,13 +526,16 @@ class QuestionPlanner:
         used: set[str],
         *,
         bias_rank: int | None = None,
+        variety_seed: str | None = None,
     ) -> QuestionTemplate | None:
         """Return the topic's best unused question.
 
         With no ``bias_rank`` this is the easiest unused question (easy <
         medium < hard). With a bias it picks the unused question whose tier is
         closest to the bias (ties go to the easier tier), so a senior-leaning
-        plan leads a topic with its hardest question.
+        plan leads a topic with its hardest question. Within a difficulty tier a
+        ``variety_seed`` rotates which question wins, so different candidates
+        lead topics with different (but reproducible) questions.
         """
         best: QuestionTemplate | None = None
         best_key = None
@@ -482,10 +543,15 @@ class QuestionPlanner:
             if question.id in used:
                 continue
             rank = self._difficulty_rank(question.difficulty)
+            rotation = (
+                _stable_hash(variety_seed, topic.id, question.id)
+                if variety_seed
+                else 0
+            )
             if bias_rank is None:
-                key = (rank,)
+                key = (rank, rotation)
             else:
-                key = (abs(rank - bias_rank), rank)
+                key = (abs(rank - bias_rank), rank, rotation)
             if best_key is None or key < best_key:
                 best, best_key = question, key
         return best
@@ -496,6 +562,8 @@ class QuestionPlanner:
         selected: list[tuple[Topic, QuestionTemplate]],
         ordered: list[Topic],
         used: set[str],
+        *,
+        variety_seed: str | None = None,
     ) -> None:
         """Guarantee at least one question of ``tier`` when the data allows it."""
         rank = _DIFFICULTY_RANKS[tier]
@@ -504,7 +572,7 @@ class QuestionPlanner:
 
         replacement: tuple[Topic, QuestionTemplate] | None = None
         for topic in ordered:
-            for question in topic.questions:
+            for question in self._seeded_questions(topic, variety_seed):
                 if question.id not in used and self._difficulty_rank(question.difficulty) == rank:
                     replacement = (topic, question)
                     break

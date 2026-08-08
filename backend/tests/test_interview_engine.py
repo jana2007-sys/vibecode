@@ -3,7 +3,7 @@
 Uses a synthetic 5-topic curriculum (id ``curriculum-001``) with 14 grounded
 questions across easy/medium/hard, matching the engine's default curriculum id,
 so the full conversational flow is deterministic. The shipped curriculum
-(4 topics / 40 questions) is used to verify the real production start path.
+(4 topics / 52 questions) is used to verify the real production start path.
 
 Engine-level tests cover every required behavior; API-level tests exercise the
 POST /api/interview wire contract and are skipped when httpx is unavailable.

@@ -2,7 +2,7 @@
 
 Covers the four real candidate profiles shipped in ``frontend/src/data/candidates.ts``
 (``candidate-001..004``) interviewed against the real ``app/data/curriculum.json``
-(4 topics / 40 questions), in production mode. Verifies that:
+(4 topics / 52 questions), in production mode. Verifies that:
 
 1. the same candidate + curriculum always yields the same 8-question plan
    (deterministic, no random selection);
@@ -49,12 +49,14 @@ REAL_CURRICULUM_ID = "curriculum-001"
 
 #: Question ids that ``candidate-001..004`` are expected to receive in order.
 #: Pinned as the deterministic personalization contract for the shipped
-#: curriculum. Change these only when the curriculum or planner intent changes.
+#: curriculum. Plans are seeded per candidate id, so every candidate draws a
+#: distinct deck from the 52-question bank even when their profiles overlap.
+#: Change these only when the curriculum or planner intent changes.
 EXPECTED_QUESTION_IDS = {
-    "candidate-001": ["sd-002", "db-001", "py-001", "al-001", "sd-003", "sd-007", "db-003", "sd-001"],
-    "candidate-002": ["py-001", "db-001", "sd-002", "al-001", "py-003", "py-004", "py-009", "py-002"],
-    "candidate-003": ["py-001", "db-001", "al-001", "sd-002", "py-003", "py-004", "py-009", "py-002"],
-    "candidate-004": ["sd-002", "py-001", "db-001", "al-001", "sd-003", "sd-007", "py-003", "sd-001"],
+    "candidate-001": ["sd-002", "db-004", "py-004", "al-001", "sd-007", "sd-011", "sd-003", "sd-013"],
+    "candidate-002": ["py-003", "db-004", "sd-003", "al-008", "py-004", "py-011", "py-001", "py-002"],
+    "candidate-003": ["py-003", "db-001", "al-001", "sd-011", "py-001", "py-011", "py-009", "py-008"],
+    "candidate-004": ["sd-011", "py-003", "db-009", "al-002", "sd-003", "sd-002", "sd-007", "sd-001"],
 }
 
 #: Expected topic ranking (highest score first) per candidate.
@@ -311,12 +313,11 @@ class TestDifferentiationAndRelevance:
         plans = _plans_for_all(stack)
         sets = {cid: {q.curriculum_question_id for q in plan.questions} for cid, plan in plans.items()}
 
-        # candidate-002 (frontend) has no curriculum-topic signal and candidate-003
-        # (data) tops out on python-first, so their plans coincide by design; every
-        # other pair must differ.
+        # Plans are seeded per candidate id, so every candidate draws a distinct
+        # deck from the bank — no two shipped candidates coincide.
         coincident = {frozenset((a, b)) for a in sets for b in sets if a < b and sets[a] == sets[b]}
-        assert coincident == {frozenset(("candidate-002", "candidate-003"))}
-        assert len({tuple(sorted(q.curriculum_question_id for q in plan.questions)) for plan in plans.values()}) == 3
+        assert coincident == set()
+        assert len({tuple(sorted(q.curriculum_question_id for q in plan.questions)) for plan in plans.values()}) == 4
 
     def test_first_question_reflects_profile(self, stack: SimpleNamespace) -> None:
         plans = _plans_for_all(stack)
@@ -348,18 +349,18 @@ class TestOverlapReport:
         plans = _plans_for_all(stack)
         sets = {cid: {q.curriculum_question_id for q in plan.questions} for cid, plan in plans.items()}
 
-        assert sets["candidate-001"] & sets["candidate-002"] == {"py-001", "db-001", "al-001", "sd-002"}
-        assert sets["candidate-001"] & sets["candidate-003"] == {"py-001", "db-001", "al-001", "sd-002"}
-        assert sets["candidate-001"] & sets["candidate-004"] == {"sd-002", "py-001", "db-001", "al-001", "sd-003", "sd-007", "sd-001"}
-        assert sets["candidate-002"] & sets["candidate-004"] == {"py-001", "db-001", "sd-002", "al-001", "py-003"}
-        assert sets["candidate-003"] & sets["candidate-004"] == {"py-001", "db-001", "al-001", "sd-002", "py-003"}
+        assert sets["candidate-001"] & sets["candidate-002"] == {"db-004", "sd-003", "py-004"}
+        assert sets["candidate-001"] & sets["candidate-003"] == {"al-001", "sd-011"}
+        assert sets["candidate-001"] & sets["candidate-004"] == {"sd-002", "sd-007", "sd-011", "sd-003"}
+        assert sets["candidate-002"] & sets["candidate-004"] == {"py-003", "sd-003"}
+        assert sets["candidate-003"] & sets["candidate-004"] == {"sd-011", "py-003"}
 
-        # Overlap magnitudes: distinct plans share the common easy-core but keep
-        # their own emphasis; the frontend/data pair coincide completely.
+        # Overlap magnitudes: seeded decks keep each candidate's topic emphasis
+        # while shrinking the shared easy core; no pair coincides anymore.
         assert _jaccard(sets["candidate-001"], sets["candidate-004"]) > _jaccard(
             sets["candidate-001"], sets["candidate-002"]
         )
-        assert _jaccard(sets["candidate-002"], sets["candidate-003"]) == 1.0
+        assert round(_jaccard(sets["candidate-002"], sets["candidate-003"]), 2) == round(3 / 13, 2)
 
 
 # --- 5. Cross-candidate session isolation ------------------------------------

@@ -69,6 +69,24 @@
           "text": "How would you design a decorator that caches function results?",
           "difficulty": "hard",
           "expects": ["closure", "memoization", "cache key"]
+        },
+        {
+          "id": "py-011",
+          "text": "How do you unpack a tuple into separate variables in Python?",
+          "difficulty": "easy",
+          "expects": ["tuple unpacking", "multiple assignment", "sequence"]
+        },
+        {
+          "id": "py-012",
+          "text": "What is the difference between a shallow copy and a deep copy?",
+          "difficulty": "medium",
+          "expects": ["shallow copy", "deep copy", "nested objects"]
+        },
+        {
+          "id": "py-013",
+          "text": "How would you optimize a Python function that runs in a hot loop?",
+          "difficulty": "hard",
+          "expects": ["caching", "algorithmic complexity", "profiling"]
         }
       ]
     },
@@ -137,6 +155,24 @@
           "text": "How would you design a database schema to support sharding?",
           "difficulty": "hard",
           "expects": ["partition key", "distribution", "hotspots"]
+        },
+        {
+          "id": "db-011",
+          "text": "What is the difference between a primary key and a unique constraint?",
+          "difficulty": "easy",
+          "expects": ["primary key", "unique", "null"]
+        },
+        {
+          "id": "db-012",
+          "text": "How does database indexing affect INSERT and UPDATE performance?",
+          "difficulty": "medium",
+          "expects": ["index maintenance", "write amplification", "tradeoff"]
+        },
+        {
+          "id": "db-013",
+          "text": "How would you design a database to handle millions of writes per second?",
+          "difficulty": "hard",
+          "expects": ["sharding", "partitioning", "write throughput"]
         }
       ]
     },
@@ -205,6 +241,24 @@
           "text": "What is a CDN and why would you use one?",
           "difficulty": "medium",
           "expects": ["edge caching", "latency", "distribution"]
+        },
+        {
+          "id": "sd-011",
+          "text": "What is the difference between synchronous and asynchronous communication?",
+          "difficulty": "easy",
+          "expects": ["blocking", "non-blocking", "response time"]
+        },
+        {
+          "id": "sd-012",
+          "text": "How would you design an API rate limiter?",
+          "difficulty": "medium",
+          "expects": ["token bucket", "quota", "client identity"]
+        },
+        {
+          "id": "sd-013",
+          "text": "Design a system that serves personalized recommendations at scale.",
+          "difficulty": "hard",
+          "expects": ["feature store", "caching", "batch pipeline"]
         }
       ]
     },
@@ -273,6 +327,24 @@
           "text": "Explain breadth-first versus depth-first traversal.",
           "difficulty": "medium",
           "expects": ["queue", "stack", "ordering"]
+        },
+        {
+          "id": "al-011",
+          "text": "What is the difference between a hash set and a hash map?",
+          "difficulty": "easy",
+          "expects": ["uniqueness", "key-value", "membership"]
+        },
+        {
+          "id": "al-012",
+          "text": "How would you find two numbers in an array that sum to a target?",
+          "difficulty": "medium",
+          "expects": ["hash map", "two-sum", "complement"]
+        },
+        {
+          "id": "al-013",
+          "text": "Explain how you would implement a least-recently-used (LRU) cache.",
+          "difficulty": "hard",
+          "expects": ["hash map", "doubly linked list", "eviction"]
         }
       ]
     }

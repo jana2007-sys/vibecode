@@ -70,6 +70,16 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     const cls = classes(variant, size, fullWidth, className);
 
     if (to) {
+      // Hash links (e.g. "#how-it-works") must render as a real anchor so the
+      // browser performs the smooth in-page scroll; react-router's Link cannot
+      // navigate to a fragment on the current route.
+      if (to.startsWith("#")) {
+        return (
+          <a href={to} className={cls} aria-disabled={disabled || loading}>
+            {children}
+          </a>
+        );
+      }
       return (
         <Link to={to} className={cls} aria-disabled={disabled || loading}>
           {children}
