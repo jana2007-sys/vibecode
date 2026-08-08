@@ -2,8 +2,8 @@
 
 Uses a synthetic 5-topic curriculum (id ``curriculum-001``) with 14 grounded
 questions across easy/medium/hard, matching the engine's default curriculum id,
-so the full conversational flow is deterministic. The shipped 3-topic
-curriculum is used to verify the clear-failure path.
+so the full conversational flow is deterministic. The shipped curriculum
+(4 topics / 40 questions) is used to verify the real production start path.
 
 Engine-level tests cover every required behavior; API-level tests exercise the
 POST /api/interview wire contract and are skipped when httpx is unavailable.
@@ -248,10 +248,14 @@ class TestStart:
         with pytest.raises(ValidationError, match="already started"):
             stack.engine.start("sess-restart", _candidate())
 
-    def test_start_real_curriculum_fails_validation(self, tmp_path: Path) -> None:
+    def test_start_real_curriculum_builds_plan(self, tmp_path: Path) -> None:
+        """The shipped curriculum now meets production minimums and starts cleanly."""
         stack = _build_stack(tmp_path, REAL_DATA_DIR / "curriculum.json")
-        with pytest.raises(ValidationError, match="at least 4 usable topics"):
-            stack.engine.start("sess-real", _candidate())
+        resp = stack.engine.start("sess-real", _candidate())
+        assert resp.done is False
+        questions = _questions(stack, "sess-real")
+        assert len(questions) == 8
+        assert _context(stack, "sess-real")["plan"]["total_questions"] == 8
 
 
 # --- Answer flow ------------------------------------------------------------
@@ -367,6 +371,48 @@ class TestFeedback:
         assert row["overall_score"] == 10.0
         assert row["summary"]
         assert row["strengths"]
+
+
+# --- Session freshness / isolation -----------------------------------------
+
+
+class TestSessionFreshness:
+    """Guards the freshness guarantees the UI relies on: every new session id
+    starts a brand-new interview at question 1, and stale or completed state is
+    never replayed on a fresh session."""
+
+    def test_new_session_id_starts_at_question_one(self, stack: SimpleNamespace) -> None:
+        stack.engine.start("sess-fresh-a", _candidate())
+        questions_a = _questions(stack, "sess-fresh-a")
+        stack.engine.handle_answer("sess-fresh-a", _full_answer(questions_a[0]))
+
+        resp = stack.engine.start("sess-fresh-b", _candidate())
+        questions_b = _questions(stack, "sess-fresh-b")
+        assert questions_b[0]["text"] in resp.reply
+        context_b = _context(stack, "sess-fresh-b")
+        assert context_b["primary_index"] == 0
+        assert context_b["primary_question_count"] == 0
+        assert context_b["primary_answered"] == 0
+        assert context_b["phase"] == "question"
+        assert InterviewState(stack.session_manager.get_session("sess-fresh-b").state) == InterviewState.QUESTION
+
+    def test_new_session_after_completed_interview_is_fresh(self, stack: SimpleNamespace) -> None:
+        _drive_to_done(stack, _full_answer, session_id="sess-complete-a")
+        assert InterviewState(stack.session_manager.get_session("sess-complete-a").state) == InterviewState.COMPLETED
+
+        resp = stack.engine.start("sess-complete-b", _candidate())
+        assert resp.done is False
+        assert resp.feedback is None
+        context_b = _context(stack, "sess-complete-b")
+        assert context_b["primary_index"] == 0
+        assert context_b["primary_question_count"] == 0
+        assert context_b["phase"] == "question"
+        assert InterviewState(stack.session_manager.get_session("sess-complete-b").state) == InterviewState.QUESTION
+
+    def test_reusing_completed_session_id_is_rejected(self, stack: SimpleNamespace) -> None:
+        _drive_to_done(stack, _full_answer, session_id="sess-reuse")
+        with pytest.raises(ValidationError, match="already started"):
+            stack.engine.start("sess-reuse", _candidate())
 
 
 # --- Evaluation engine ------------------------------------------------------

@@ -22,13 +22,14 @@ class FeedbackRepository(BaseRepository):
         improvements: list[str],
         topics: list[dict],
         created_at: datetime,
+        source: str = "deterministic",
     ) -> None:
         """Insert a feedback report for a session (one report per session)."""
         with self._db.connection() as conn:
             conn.execute(
                 """
-                INSERT INTO feedback (id, session_id, overall_score, summary, strengths, improvements, topics, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO feedback (id, session_id, overall_score, summary, strengths, improvements, topics, created_at, source)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     feedback_id,
@@ -39,6 +40,7 @@ class FeedbackRepository(BaseRepository):
                     self._dumps(improvements),
                     self._dumps(topics),
                     created_at.isoformat(),
+                    source,
                 ),
             )
 

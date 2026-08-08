@@ -1,37 +1,68 @@
 /** Typed API client for the InterVue AI backend.
 
-Every method maps 1:1 to a backend route and returns the matching contract type
-(see `src/types`). Pages and hooks depend on this client, never on fetch.
+Maps 1:1 to the interactive hackathon contract — a single `POST /interview`
+endpoint used for both starting the interview (with a candidate) and continuing
+it (with a message). Every response is `{ reply, done, feedback? }`.
+
+The old `answer`/`complete` sub-resource endpoints are intentionally gone; the
+frontend depends only on the interactive contract. The base URL comes from
+`VITE_API_BASE_URL` (never hardcoded).
 */
 
-import type {
-  AnswerRequest,
-  AnswerResponse,
-  CompleteInterviewResponse,
-  StartInterviewRequest,
-  StartInterviewResponse,
-} from "../types/interview";
-import type { Feedback } from "../types/feedback";
-import type { Session, SessionList } from "../types/session";
+import type { CandidateProfile } from "../types/candidate";
+import type { InterviewResponse } from "../types/interview";
 import { http } from "./http";
+
+/** Coerce an unknown JSON body into the contract shape, or throw. */
+export function parseInterviewResponse(value: unknown): InterviewResponse {
+  if (!value || typeof value !== "object") {
+    throw malformed();
+  }
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.reply !== "string" || raw.reply.length === 0) {
+    throw malformed();
+  }
+  if (typeof raw.done !== "boolean") {
+    throw malformed();
+  }
+
+  let feedback: InterviewResponse["feedback"] = null;
+  if (raw.feedback !== undefined && raw.feedback !== null) {
+    if (typeof raw.feedback !== "object") throw malformed();
+    const f = raw.feedback as Record<string, unknown>;
+    if (
+      typeof f.summary !== "string" ||
+      !Array.isArray(f.strengths) ||
+      !Array.isArray(f.gaps) ||
+      !Array.isArray(f.next)
+    ) {
+      throw malformed();
+    }
+    feedback = {
+      summary: f.summary,
+      strengths: f.strengths.map(String),
+      gaps: f.gaps.map(String),
+      next: f.next.map(String),
+    };
+  }
+
+  return { reply: raw.reply, done: raw.done, feedback };
+}
+
+function malformed(): Error {
+  const error = new Error(
+    "The interview service returned an unexpected response."
+  );
+  error.name = "UnexpectedResponseError";
+  return error;
+}
 
 export const api = {
   health: () => http.get<{ status: string; version: string }>("/health"),
 
-  startInterview: (body: StartInterviewRequest) =>
-    http.post<StartInterviewResponse>("/interview", body),
+  startInterview: (sessionId: string, candidate: CandidateProfile) =>
+    http.post<unknown>("/interview", { sessionId, candidate }),
 
-  answerInterview: (sessionId: string, body: AnswerRequest) =>
-    http.post<AnswerResponse>(`/interview/${sessionId}/answer`, body),
-
-  completeInterview: (sessionId: string) =>
-    http.post<CompleteInterviewResponse>(`/interview/${sessionId}/complete`, {}),
-
-  getSession: (sessionId: string) =>
-    http.get<Session>(`/interview/${sessionId}`),
-
-  listSessions: () => http.get<SessionList>("/sessions"),
-
-  getReport: (sessionId: string) =>
-    http.get<Feedback>(`/sessions/${sessionId}/report`),
+  continueInterview: (sessionId: string, message: string) =>
+    http.post<unknown>("/interview", { sessionId, message }),
 };

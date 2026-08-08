@@ -10,18 +10,23 @@ Conversation flow per the interactive contract:
 
 - ``start`` analyzes the candidate, builds the plan, stores it in the session
   context, and asks the first primary question.
-- ``handle_answer`` records and evaluates each answer. A primary answer that
-  misses concepts (and allows follow-up) triggers exactly one grounded
-  follow-up; otherwise the engine advances to the next primary. After the last
-  primary the session completes and the FeedbackGenerator produces the report.
+- ``handle_answer`` records and evaluates each answer. A primary answer may
+  trigger exactly one follow-up, move to the next primary, or end the interview.
+  When an AdaptiveDecider is wired it owns that decision (Gemini with a
+  deterministic fallback); otherwise the classic concept-coverage heuristic
+  applies. After the follow-up, or when none is warranted, the engine advances
+  to the next primary. After the last primary the session completes and the
+  FeedbackGenerator produces the report.
 
 Collaborators: SessionManager, QuestionPlanner, EvaluationEngine, MemoryEngine,
-CurriculumLoader, CandidateAnalyzer, FeedbackGenerator, MessageRepository.
+CurriculumLoader, CandidateAnalyzer, FeedbackGenerator, MessageRepository,
+AdaptiveDecider.
 """
 
 from __future__ import annotations
 
 from collections import Counter
+from dataclasses import replace as replace_decision
 
 from app.database.repositories.message_repository import MessageRepository
 from app.models.candidate import CandidateProfile
@@ -29,10 +34,18 @@ from app.models.common import new_uuid, utc_now
 from app.models.interview import InterviewFeedback, InterviewTurnResponse
 from app.models.message import MessageRole
 from app.models.session import InterviewState, SessionCreate
+from app.services.adaptive_decider import (
+    ACTION_COMPLETE,
+    ACTION_FOLLOW_UP,
+    ACTION_NEXT,
+    AdaptiveDecider,
+    InterviewDecision,
+)
 from app.services.candidate_analyzer import CandidateAnalyzer
 from app.services.curriculum_loader import CurriculumLoader
 from app.services.evaluation_engine import EvaluationEngine
-from app.services.feedback_generator import FeedbackGenerator
+from app.services.feedback_generator import FeedbackGenerator, NEXT_STEP_PREFIX
+from app.services.follow_up_advisor import FollowUpAdvisor
 from app.services.memory_engine import MemoryEngine
 from app.services.question_planner import QuestionPlanner
 from app.services.session_manager import SessionManager
@@ -63,6 +76,8 @@ class InterviewEngine:
         feedback_generator: FeedbackGenerator,
         message_repository: MessageRepository,
         default_curriculum_id: str = DEFAULT_CURRICULUM_ID,
+        follow_up_advisor: FollowUpAdvisor | None = None,
+        adaptive_decider: AdaptiveDecider | None = None,
     ) -> None:
         self._sessions = session_manager
         self._planner = question_planner
@@ -73,6 +88,8 @@ class InterviewEngine:
         self._feedback = feedback_generator
         self._messages = message_repository
         self._default_curriculum_id = default_curriculum_id
+        self._follow_up_advisor = follow_up_advisor
+        self._adaptive_decider = adaptive_decider
 
     # --- Entry points --------------------------------------------------------
 
@@ -113,6 +130,9 @@ class InterviewEngine:
             "asked_questions": [first.model_dump(mode="json")],
             "answers": [],
             "evaluations": [],
+            "follow_ups": [],
+            "decisions": [],
+            "difficulty_bias": plan.difficulty_bias,
         }
         self._sessions.update_context(session_id, context)
 
@@ -128,8 +148,10 @@ class InterviewEngine:
     def handle_answer(self, session_id: str, answer: str) -> InterviewTurnResponse:
         """Process a candidate answer and return the next interviewer turn.
 
-        When the answer completes the final primary the interview transitions to
-        SUMMARY then COMPLETED and the response carries the generated feedback.
+        Flow: deterministic evaluation -> (AI) turn decision (follow-up, next
+        primary, or completion) -> at most one follow-up. When the answer
+        completes the final primary the interview transitions to SUMMARY then
+        COMPLETED and the response carries the generated feedback.
         """
         session = self._sessions.get_session(session_id)
         if InterviewState(session.state) == InterviewState.COMPLETED:
@@ -143,7 +165,7 @@ class InterviewEngine:
         phase = context.get("phase", "question")
         self._persist_candidate(session_id, answer, question=current, kind="answer")
 
-        _, missing = self._evaluator.concept_coverage(answer, current["expects"])
+        covered, missing = self._evaluator.concept_coverage(answer, current["expects"])
         score = self._evaluator.evaluate_answer(
             session_id,
             current["topic_id"],
@@ -157,6 +179,7 @@ class InterviewEngine:
                 "topic_id": current["topic_id"],
                 "kind": "primary" if phase == "question" else "follow_up",
                 "score": score,
+                "covered": list(covered),
                 "missing": list(missing),
             }
         )
@@ -173,16 +196,48 @@ class InterviewEngine:
             context["primary_question_count"] += 1
             context["primary_answered"] += 1
 
-            if missing and current.get("follow_up_allowed", False):
+            decision = self._decide_next(
+                session_id,
+                context,
+                current,
+                answer,
+                score,
+                list(missing),
+                list(covered),
+            )
+            context["decisions"].append(
+                {
+                    "question_id": current["curriculum_question_id"],
+                    "topic_id": current["topic_id"],
+                    **decision,
+                }
+            )
+            if decision["action"] == ACTION_FOLLOW_UP:
                 context["phase"] = "follow_up"
-                context["pending_follow_up"] = missing[0]
+                context["pending_follow_up"] = decision["target_concept"]
+                context["follow_ups"].append(
+                    {
+                        "question": decision["question"],
+                        "target_concept": decision["target_concept"],
+                        "reason": decision["reason"],
+                        "source": decision["source"],
+                    }
+                )
                 self._sessions.advance(session_id, InterviewState.FOLLOW_UP)
                 self._sessions.update_context(session_id, context)
-                follow_up_text = self._build_follow_up(current, missing[0])
                 self._persist_interviewer(
-                    session_id, follow_up_text, question=current, kind="follow_up"
+                    session_id,
+                    decision["question"],
+                    question=current,
+                    kind="follow_up",
+                    extra={
+                        "follow_up": {
+                            "target_concept": decision["target_concept"],
+                            "source": decision["source"],
+                        }
+                    },
                 )
-                return InterviewTurnResponse(reply=follow_up_text, done=False)
+                return InterviewTurnResponse(reply=decision["question"], done=False)
         else:
             context["follow_up_count"] += 1
             context["primary_answered"] += 1
@@ -190,6 +245,172 @@ class InterviewEngine:
             context["phase"] = "question"
 
         return self._advance_after_primary(session_id, context)
+
+    # --- Turn decision --------------------------------------------------------
+
+    def _decide_next(
+        self,
+        session_id: str,
+        context: dict,
+        question: dict,
+        answer: str,
+        score: float,
+        missing: list[str],
+        covered: list[str],
+    ) -> dict:
+        """Decide the action after one primary answer.
+
+        With an AdaptiveDecider wired, it owns the decision (Gemini with a
+        deterministic fallback). Otherwise the classic follow-up heuristic
+        applies, then the plan length decides between advancing and completing.
+
+        Returns ``{"action", "question", "target_concept", "reason", "source"}``
+        where ``action`` is ``follow_up``, ``next_question``, or ``complete``.
+        """
+        remaining = len(context["plan"]["questions"]) - (context["primary_index"] + 1)
+
+        if self._adaptive_decider is not None:
+            topic = next(
+                (t for t in context.get("topics", []) if t.get("id") == question.get("topic_id")),
+                {},
+            )
+            decision = self._adaptive_decider.decide(
+                session_id=session_id,
+                topic=topic,
+                question=question,
+                answer=answer,
+                evaluation={
+                    "question_id": question["curriculum_question_id"],
+                    "topic_id": question["topic_id"],
+                    "kind": "primary",
+                    "score": score,
+                    "missing": missing,
+                    "covered": covered,
+                },
+                conversation_context=self._memory.get_conversation_history(session_id),
+                remaining_questions=remaining,
+                difficulty_bias=context.get("difficulty_bias"),
+            )
+            # The engine is authoritative over the plan length: never complete
+            # early, never skip ahead of the final question.
+            if decision.action == ACTION_COMPLETE and remaining > 0:
+                decision = self._coerce(
+                    decision, ACTION_NEXT, "Engine corrected a premature complete."
+                )
+            elif decision.action in (ACTION_NEXT, ACTION_FOLLOW_UP) and remaining <= 0:
+                decision = self._coerce(
+                    decision, ACTION_COMPLETE, "Engine corrected: no questions remain."
+                )
+            return {
+                "action": decision.action,
+                "question": decision.question,
+                "target_concept": decision.target_concept,
+                "reason": decision.reason,
+                "source": decision.source,
+            }
+
+        follow_up = self._plan_follow_up(
+            session_id,
+            context,
+            question,
+            answer,
+            score,
+            missing,
+            covered,
+        )
+        if follow_up is not None:
+            return {
+                "action": ACTION_FOLLOW_UP,
+                "question": follow_up["question"],
+                "target_concept": follow_up["target_concept"],
+                "reason": follow_up["reason"],
+                "source": follow_up["source"],
+            }
+        if remaining <= 0:
+            return {
+                "action": ACTION_COMPLETE,
+                "question": "",
+                "target_concept": None,
+                "reason": "deterministic: no questions remain",
+                "source": "deterministic",
+            }
+        return {
+            "action": ACTION_NEXT,
+            "question": "",
+            "target_concept": None,
+            "reason": "deterministic: proceed to next question",
+            "source": "deterministic",
+        }
+
+    @staticmethod
+    def _coerce(decision: InterviewDecision, action: str, reason: str) -> InterviewDecision:
+        """Return ``decision`` rewritten to ``action`` (preserves ``source``)."""
+        return replace_decision(
+            decision,
+            action=action,
+            reason=reason,
+            question="",
+            target_concept=None,
+        )
+
+    def _plan_follow_up(
+        self,
+        session_id: str,
+        context: dict,
+        question: dict,
+        answer: str,
+        score: float,
+        missing: list[str],
+        covered: list[str],
+    ) -> dict | None:
+        """Decide whether to ask exactly one follow-up for a primary answer.
+
+        When a FollowUpAdvisor is wired it owns the decision (Gemini with a
+        deterministic fallback); otherwise the classic heuristic applies. Returns
+        ``None`` when no follow-up should be asked. Never allows a follow-up when
+        the plan forbids one (``follow_up_allowed``), so coverage is preserved.
+        """
+        if not question.get("follow_up_allowed", False):
+            return None
+
+        if self._follow_up_advisor is not None:
+            topic = next(
+                (t for t in context.get("topics", []) if t.get("id") == question.get("topic_id")),
+                {},
+            )
+            decision = self._follow_up_advisor.decide(
+                session_id=session_id,
+                topic=topic,
+                question=question,
+                answer=answer,
+                evaluation={
+                    "question_id": question["curriculum_question_id"],
+                    "topic_id": question["topic_id"],
+                    "kind": "primary",
+                    "score": score,
+                    "missing": missing,
+                    "covered": covered,
+                },
+                conversation_context=self._memory.get_conversation_history(session_id),
+            )
+            if not decision.should_follow_up:
+                return None
+            return {
+                "question": decision.question,
+                "target_concept": decision.target_concept,
+                "reason": decision.reason,
+                "source": decision.source,
+            }
+
+        if not missing:
+            return None
+        concept = missing[0]
+        return {
+            "question": self._build_follow_up(question, concept),
+            "target_concept": concept,
+            "reason": "deterministic: expected concept not addressed",
+            "source": "deterministic",
+        }
 
     # --- Progression ---------------------------------------------------------
 
@@ -218,9 +439,13 @@ class InterviewEngine:
             self._persist_interviewer(session_id, next_question["text"], question=next_question, kind="question")
             return InterviewTurnResponse(reply=next_question["text"], done=False)
 
+        return self._complete(session_id, context)
+
+    def _complete(self, session_id: str, context: dict) -> InterviewTurnResponse:
+        """Finish the interview: SUMMARY -> COMPLETED, generate the report."""
         # Final answer: QUESTION/FOLLOW_UP -> SUMMARY -> COMPLETED.
         self._sessions.advance(session_id, InterviewState.SUMMARY)
-        self._sessions.advance(session_id, InterviewState.COMPLETED)
+        self._sessions.complete(session_id)
         self._sessions.update_context(session_id, context)
 
         report = self._feedback.generate_report(session_id)
@@ -242,11 +467,14 @@ class InterviewEngine:
         *,
         question: dict | None,
         kind: str,
+        extra: dict | None = None,
     ) -> None:
         metadata = {"kind": kind}
         if question:
             metadata["question_id"] = question["curriculum_question_id"]
             metadata["topic_id"] = question["topic_id"]
+        if extra:
+            metadata.update(extra)
         self._messages.create(
             message_id=new_uuid(),
             session_id=session_id,
@@ -280,11 +508,18 @@ class InterviewEngine:
 
     @staticmethod
     def _build_intro(candidate: CandidateProfile, plan) -> str:
-        return (
+        greeting = (
             f"Welcome, {candidate.name}! This is your InterVue AI technical interview. "
             f"You will be asked {plan.total_questions} questions across "
-            f"{len(plan.topics_covered)} topics. Let's begin."
+            f"{len(plan.topics_covered)} topics."
         )
+        if plan.difficulty_bias:
+            label = {
+                "easy": "a junior-friendly",
+                "hard": "a senior-level",
+            }.get(plan.difficulty_bias, "a balanced")
+            greeting += f" We've tuned the questions for {label} difficulty."
+        return greeting + " Let's begin."
 
     @staticmethod
     def _build_follow_up(question: dict, concept: str) -> str:
@@ -303,7 +538,13 @@ class InterviewEngine:
     # --- Feedback mapping ----------------------------------------------------
 
     def _to_feedback(self, context: dict, report) -> InterviewFeedback:
-        """Map the persisted report plus context into the response feedback."""
+        """Map the persisted report plus context into the response feedback.
+
+        Items in ``report.improvements`` prefixed with ``NEXT_STEP_PREFIX`` are
+        AI-generated next steps and surface in the response ``next`` list rather
+        than as gaps. The deterministic report never emits that prefix, so the
+        deterministic mapping is unchanged.
+        """
         missing_counter: Counter[str] = Counter()
         for evaluation in context.get("evaluations", []):
             missing_counter.update(evaluation.get("missing", []))
@@ -316,10 +557,19 @@ class InterviewEngine:
             if concept not in next_steps:
                 next_steps.append(concept)
 
+        gaps: list[str] = []
+        for item in report.improvements:
+            if item.startswith(NEXT_STEP_PREFIX):
+                step = item[len(NEXT_STEP_PREFIX):].strip()
+                if step and step not in next_steps:
+                    next_steps.insert(0, step)
+            else:
+                gaps.append(item)
+
         return InterviewFeedback(
             summary=report.summary,
             strengths=list(report.strengths),
-            gaps=list(report.improvements),
+            gaps=gaps,
             next=next_steps,
         )
 

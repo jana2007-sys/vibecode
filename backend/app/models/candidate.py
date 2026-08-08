@@ -36,6 +36,10 @@ class CandidateProfile(BaseModelConfig):
     name: str = Field(min_length=1)
     role: str = Field(default="", description="Target role, e.g. 'Backend Engineer'")
     years_of_experience: float = Field(default=0.0, ge=0)
+    experience_level: str = Field(
+        default="mid",
+        description="junior | mid | senior. Only honored for custom profiles (id prefix 'custom-').",
+    )
     skills: list[SkillLevel] = Field(default_factory=list)
     learning_journey: list[LearningJourneyEntry] = Field(default_factory=list)
     preferred_languages: list[str] = Field(default_factory=list)

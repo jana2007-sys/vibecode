@@ -1,9 +1,39 @@
 """Candidate answer evaluation.
 
-Scores a candidate's answer for a given question, producing per-question and
-per-topic scores. Scoring is currently deterministic (keyword coverage of the
-question's ``expects`` concepts); it will be delegated to the LLM
-(GeminiService) once enabled. This class owns the orchestration and persistence.
+Scores a candidate's answer for a given question against the curriculum's
+``expects`` concepts, producing a structured per-question evaluation and
+persisting a 0-10 score through the existing ScoreRepository. Scoring is fully
+deterministic and explainable; it is NOT a semantic (LLM) judgment. Gemini-based
+evaluation will be layered on later via the stable ``GeminiService`` interface.
+
+Deterministic scoring strategy
+------------------------------
+
+For a question with ``N`` expected concepts:
+
+    score = 10.0 * coverage * length_factor
+
+where
+
+* ``coverage`` is the fraction of expected concepts the answer addresses
+  (``matched / N``; exactly ``1.0`` when there is nothing to test).
+* ``length_factor`` is ``min(1.0, unique_content_tokens / MIN_ANSWER_TOKENS)``,
+  a penalty for extremely short answers so that naming a concept label without
+  any elaboration cannot earn full marks. It is computed over *unique* tokens,
+  so repeating the same word never inflates the score.
+
+A concept is "matched" when every alphanumeric token of the concept appears in
+the answer (case-insensitive). Multi-word concepts require all their tokens.
+Empty or blank answers score ``0.0``. The same ``(answer, expects)`` input
+always produces the same result.
+
+Limitations: this is a lexical coverage heuristic, not comprehension. It cannot
+judge whether an answer is *correct* or how well the candidate reasoned; it
+rewards answers that mention the expected vocabulary and penalizes
+impoverished/absent ones. A well-reasoned answer that avoids the expected
+vocabulary will score low, and a fluent but shallow answer may score high.
+Semantic correctness and reasoning signals are intentionally left out of the
+deterministic evaluator (``AnswerEvaluation.reasoning`` is always ``None``).
 
 Collaborators: GeminiService, ScoreRepository, MessageRepository.
 """
@@ -11,6 +41,7 @@ Collaborators: GeminiService, ScoreRepository, MessageRepository.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass, field
 
 from app.database.repositories.message_repository import MessageRepository
 from app.database.repositories.score_repository import ScoreRepository
@@ -22,10 +53,38 @@ logger = get_logger(__name__)
 
 _TOKENS_PATTERN = re.compile(r"[a-z0-9]+")
 
+#: Answers with fewer than this many *unique* content tokens are too brief to
+#: earn full marks even when they name every expected concept.
+MIN_ANSWER_TOKENS = 4
+
+#: Completeness labels used by :class:`AnswerEvaluation`.
+COMPLETENESS_EMPTY = "empty"
+COMPLETENESS_UNSATISFACTORY = "unsatisfactory"
+COMPLETENESS_PARTIAL = "partial"
+COMPLETENESS_COMPLETE = "complete"
+
 
 def _tokens(text: str) -> set[str]:
     """Return the normalized lowercase alphanumeric tokens of ``text``."""
     return set(_TOKENS_PATTERN.findall(text.lower()))
+
+
+@dataclass(frozen=True)
+class AnswerEvaluation:
+    """Structured, deterministic evaluation of a single answer.
+
+    Every concept field is grounded in the curriculum's ``expects`` data;
+    nothing is invented by the evaluator.
+    """
+
+    score: float
+    matched_concepts: list[str] = field(default_factory=list)
+    missing_concepts: list[str] = field(default_factory=list)
+    expected_concepts: int = 0
+    coverage: float = 0.0
+    completeness: str = COMPLETENESS_UNSATISFACTORY
+    reasoning: str | None = None
+    feedback: str = ""
 
 
 class EvaluationEngine:
@@ -63,6 +122,43 @@ class EvaluationEngine:
                 missing.append(concept)
         return covered, missing
 
+    # --- Structured evaluation -----------------------------------------------
+
+    def evaluate_answer_detail(
+        self,
+        session_id: str,
+        topic_id: str,
+        question_id: str,
+        answer: str,
+        expects: list[str] | None = None,
+    ) -> AnswerEvaluation:
+        """Evaluate an answer, persist its score, and return the full detail.
+
+        Persists via the existing :class:`ScoreRepository` (the score and the
+        human-readable feedback in ``rationale``), then returns the structured
+        :class:`AnswerEvaluation` for downstream follow-up/feedback/prompts.
+        """
+        matched, missing = self.concept_coverage(answer, expects or [])
+        evaluation = self._evaluate(matched, missing, answer)
+        self._scores.create(
+            score_id=new_uuid(),
+            session_id=session_id,
+            topic_id=topic_id,
+            question_id=question_id,
+            score=evaluation.score,
+            rationale=evaluation.feedback,
+            created_at=utc_now(),
+        )
+        logger.info(
+            "Scored answer for %s/%s: %.2f (%d/%d concepts)",
+            session_id,
+            question_id,
+            evaluation.score,
+            len(matched),
+            len(matched) + len(missing),
+        )
+        return evaluation
+
     def evaluate_answer(
         self,
         session_id: str,
@@ -73,32 +169,12 @@ class EvaluationEngine:
     ) -> float:
         """Score a single answer on a 0-10 scale and persist the result.
 
-        The score is the share of the question's ``expects`` concepts the
-        answer covers, scaled to 0-10. A question with no evaluable concepts
-        scores a perfect 10.0 (nothing was missing to test).
+        Convenience wrapper around :meth:`evaluate_answer_detail` that returns
+        only the numeric score (kept for backward compatibility).
         """
-        covered, missing = self.concept_coverage(answer, expects or [])
-        total = len(covered) + len(missing)
-        score = round(10.0 * len(covered) / total, 2) if total else 10.0
-        rationale = self._rationale(covered, missing)
-        self._scores.create(
-            score_id=new_uuid(),
-            session_id=session_id,
-            topic_id=topic_id,
-            question_id=question_id,
-            score=score,
-            rationale=rationale,
-            created_at=utc_now(),
-        )
-        logger.info(
-            "Scored answer for %s/%s: %.2f (%d/%d concepts)",
-            session_id,
-            question_id,
-            score,
-            len(covered),
-            total,
-        )
-        return score
+        return self.evaluate_answer_detail(
+            session_id, topic_id, question_id, answer, expects
+        ).score
 
     def evaluate_topic(self, session_id: str, topic_id: str) -> float:
         """Aggregate per-question scores into a topic score.
@@ -111,14 +187,74 @@ class EvaluationEngine:
             return 0.0
         return round(sum(float(row["score"]) for row in rows) / len(rows), 2)
 
-    # --- Helpers -------------------------------------------------------------
+    # --- Deterministic scoring -----------------------------------------------
 
     @staticmethod
-    def _rationale(covered: list[str], missing: list[str]) -> str:
-        """Describe which concepts the answer covered and which it missed."""
+    def _evaluate(
+        matched: list[str],
+        missing: list[str],
+        answer: str,
+    ) -> AnswerEvaluation:
+        """Derive the structured evaluation from concept coverage.
+
+        See the module docstring for the exact scoring formula. This is a pure
+        function of ``(answer, expects)``: the same input always yields the
+        same evaluation.
+        """
+        total = len(matched) + len(missing)
+        if total == 0:
+            return AnswerEvaluation(
+                score=10.0,
+                matched_concepts=[],
+                missing_concepts=[],
+                expected_concepts=0,
+                coverage=1.0,
+                completeness=COMPLETENESS_COMPLETE,
+                reasoning=None,
+                feedback="No evaluable concepts; nothing to test.",
+            )
+
+        coverage = len(matched) / total
+        unique_tokens = len(_tokens(answer))
+        length_factor = min(1.0, unique_tokens / MIN_ANSWER_TOKENS)
+        score = round(10.0 * coverage * length_factor, 2)
+        completeness = EvaluationEngine._completeness(answer, coverage, length_factor)
+        return AnswerEvaluation(
+            score=score,
+            matched_concepts=list(matched),
+            missing_concepts=list(missing),
+            expected_concepts=total,
+            coverage=coverage,
+            completeness=completeness,
+            reasoning=None,
+            feedback=EvaluationEngine._feedback(matched, missing, completeness),
+        )
+
+    @staticmethod
+    def _completeness(answer: str, coverage: float, length_factor: float) -> str:
+        """Label answer completeness from coverage and substance."""
+        if not answer.strip():
+            return COMPLETENESS_EMPTY
+        if coverage >= 1.0 and length_factor >= 1.0:
+            return COMPLETENESS_COMPLETE
+        if coverage > 0.0:
+            return COMPLETENESS_PARTIAL
+        return COMPLETENESS_UNSATISFACTORY
+
+    @staticmethod
+    def _feedback(matched: list[str], missing: list[str], completeness: str) -> str:
+        """Build candidate-facing feedback from the evaluation signals."""
         parts: list[str] = []
-        if covered:
-            parts.append("Covered: " + ", ".join(covered))
+        if matched:
+            parts.append("Covered: " + ", ".join(matched))
         if missing:
             parts.append("Missing: " + ", ".join(missing))
-        return "; ".join(parts) or "No evaluable concepts."
+        if completeness == COMPLETENESS_EMPTY:
+            parts.append("Answer is empty.")
+        elif completeness == COMPLETENESS_COMPLETE:
+            parts.append("Answer addresses every expected concept.")
+        elif completeness == COMPLETENESS_PARTIAL:
+            parts.append("Answer is only partial; elaborate on the expected concepts.")
+        else:
+            parts.append("Answer does not address the expected concepts.")
+        return "; ".join(parts)

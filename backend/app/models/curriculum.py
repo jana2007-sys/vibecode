@@ -6,6 +6,8 @@ topics and question templates the interview engine will walk through.
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import Field
 
 from app.models.common import BaseModelConfig, Id
@@ -73,14 +75,33 @@ class PlannedQuestion(BaseModelConfig):
 class InterviewPlan(BaseModelConfig):
     """A deterministic, personalized interview plan.
 
-    Produced by ``QuestionPlanner``. Guarantees a minimum of 8 grounded
-    questions covering at least 4 distinct curriculum topics.
+    Produced by ``QuestionPlanner``. A complete plan guarantees a minimum of 8
+    grounded questions covering at least 4 distinct curriculum topics. Plans
+    built in development mode may be partial; ``is_complete`` and
+    ``completeness_metadata`` describe what (if anything) is missing.
     """
 
     candidate_id: Id
     curriculum_id: Id
-    total_questions: int = Field(ge=8, description="Number of planned questions (minimum 8).")
-    topics_covered: list[str] = Field(
-        description="Distinct topic ids covered, in first-appearance order."
+    total_questions: int = Field(
+        ge=0,
+        description="Number of planned questions (>= 8 for a complete plan).",
     )
-    questions: list[PlannedQuestion] = Field(min_length=8)
+    difficulty_bias: str | None = Field(
+        default=None,
+        description="easy | hard when the plan is tuned for a custom candidate profile "
+        "(id prefix 'custom-'), else None (balanced).",
+    )
+    topics_covered: list[str] = Field(
+        default_factory=list,
+        description="Distinct topic ids covered, in first-appearance order.",
+    )
+    is_complete: bool = Field(
+        default=True,
+        description="True when the plan meets production minimums (8 questions / 4 topics).",
+    )
+    completeness_metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Shortfall report: missing_topics, missing_questions, and a reason.",
+    )
+    questions: list[PlannedQuestion] = Field(default_factory=list)

@@ -1,20 +1,13 @@
-/** Mirrors backend `TopicSummary`. */
-export interface TopicSummary {
-  topic_id: string;
-  title: string;
-  average_score: number;
-  strengths: string[];
-  improvements: string[];
-}
+/** Structured feedback returned by the backend when an interview completes.
 
-/** Mirrors backend `FeedbackRead`. */
-export interface Feedback {
-  id: string;
-  session_id: string;
-  overall_score: number;
+This mirrors the `InterviewFeedback` model in the hackathon contract exactly:
+`{ summary, strengths, gaps, next }`. No scores are invented — if the API does
+not provide a number, the UI simply never shows one.
+*/
+
+export interface InterviewFeedback {
   summary: string;
   strengths: string[];
-  improvements: string[];
-  topics: TopicSummary[];
-  created_at: string;
+  gaps: string[];
+  next: string[];
 }

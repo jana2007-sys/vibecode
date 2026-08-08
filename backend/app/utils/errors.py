@@ -46,3 +46,10 @@ class LLMUnavailableError(InterVueError):
 
     status_code = 503
     code = "llm_unavailable"
+
+
+class LLMError(InterVueError):
+    """Raised when an LLM call fails at runtime (network, API, empty response)."""
+
+    status_code = 502
+    code = "llm_error"

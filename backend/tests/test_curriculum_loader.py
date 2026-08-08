@@ -63,13 +63,13 @@ class TestRealData:
         assert curriculum.id == REAL_CURRICULUM_ID
         assert curriculum.title == "Full-Stack Engineering Interview Path"
         assert curriculum.version == "1.0.0"
-        assert len(curriculum.topics) == 3
+        assert len(curriculum.topics) == 4
 
     def test_valid_day_lookup(self, real_curriculum: Curriculum) -> None:
         loader = CurriculumLoader(data_dir=REAL_DATA_DIR)
         assert loader.get_topic(real_curriculum, 0) is real_curriculum.topics[0]
         assert loader.get_topic_at(real_curriculum, 2).id == "topic-systems"
-        assert loader.get_available_days(real_curriculum) == [0, 1, 2]
+        assert loader.get_available_days(real_curriculum) == [0, 1, 2, 3]
 
     def test_invalid_day_lookup_returns_none(
         self, real_curriculum: Curriculum
@@ -82,7 +82,7 @@ class TestRealData:
         self, real_curriculum: Curriculum
     ) -> None:
         loader = CurriculumLoader(data_dir=REAL_DATA_DIR)
-        for bad in (-1, 3, 99):
+        for bad in (-1, 4, 99):
             with pytest.raises(ValidationError):
                 loader.get_topic_at(real_curriculum, bad)
         with pytest.raises(ValidationError):
@@ -128,18 +128,20 @@ class TestRealData:
             "topic-python",
             "topic-databases",
             "topic-systems",
+            "topic-algorithms",
         ]
         assert loader.get_all_topic_ids(real_curriculum) == [
             "topic-python",
             "topic-databases",
             "topic-systems",
+            "topic-algorithms",
         ]
-        assert loader.get_topic_count(real_curriculum) == 3
+        assert loader.get_topic_count(real_curriculum) == 4
 
     def test_is_last_topic(self, real_curriculum: Curriculum) -> None:
         loader = CurriculumLoader(data_dir=REAL_DATA_DIR)
         assert not loader.is_last_topic(real_curriculum, 0)
-        assert loader.is_last_topic(real_curriculum, 2)
+        assert loader.is_last_topic(real_curriculum, 3)
 
     def test_load_is_cached_without_rereading(
         self, loader_with_real_data: CurriculumLoader

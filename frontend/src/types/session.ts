@@ -1,28 +1,26 @@
-/** Mirrors backend `InterviewState` enum. */
-export type InterviewState =
-  | "START"
-  | "INTRODUCTION"
-  | "QUESTION"
-  | "FOLLOW_UP"
-  | "NEXT_TOPIC"
-  | "SUMMARY"
-  | "COMPLETED";
+/** Frontend interview session state.
 
-/** Mirrors backend `SessionRead`. */
-export interface Session {
-  id: string;
-  candidate_id: string;
-  curriculum_id: string;
-  state: InterviewState;
-  topic_index: number;
-  context: Record<string, unknown>;
-  created_at: string;
-  updated_at: string;
-  completed_at: string | null;
+This is the client-side shape that is persisted to sessionStorage so a page
+refresh does not destroy an in-progress interview. It deliberately mirrors only
+what the frontend needs — nothing else is stored.
+*/
+
+import type { CandidateProfile } from "./candidate";
+import type { InterviewFeedback } from "./feedback";
+import type { ChatMessage } from "./interview";
+
+export interface InterviewSession {
+  sessionId: string | null;
+  candidate: CandidateProfile | null;
+  messages: ChatMessage[];
+  feedback: InterviewFeedback | null;
+  done: boolean;
 }
 
-/** Mirrors backend `SessionList`. */
-export interface SessionList {
-  items: Session[];
-  total: number;
-}
+export const EMPTY_SESSION: InterviewSession = {
+  sessionId: null,
+  candidate: null,
+  messages: [],
+  feedback: null,
+  done: false,
+};

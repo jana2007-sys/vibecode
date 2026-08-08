@@ -2,17 +2,25 @@
 
 interface LoadingProps {
   label?: string;
+  className?: string;
 }
 
-export function Loading({ label = "Loading..." }: LoadingProps) {
+export function Loading({
+  label = "Loading...",
+  className,
+}: LoadingProps) {
   return (
     <div
       role="status"
       aria-live="polite"
-      className="flex items-center justify-center gap-3 py-16 text-slate-500"
+      className={`flex flex-col items-center justify-center gap-4 py-16 text-slate-400 ${className ?? ""}`}
     >
-      <span className="h-5 w-5 animate-spin rounded-full border-2 border-brand border-t-transparent" />
-      <span>{label}</span>
+      <div className="flex items-center gap-2">
+        <span className="h-2 w-2 animate-blink rounded-full bg-indigo-400 [animation-delay:0ms]" />
+        <span className="h-2 w-2 animate-blink rounded-full bg-violet-400 [animation-delay:200ms]" />
+        <span className="h-2 w-2 animate-blink rounded-full bg-fuchsia-400 [animation-delay:400ms]" />
+      </div>
+      <span className="text-sm">{label}</span>
     </div>
   );
 }

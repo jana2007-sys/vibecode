@@ -83,5 +83,8 @@ class SessionManager:
         return self.get_session(session_id)
 
     def complete(self, session_id: str) -> SessionRead:
-        """Move a session into the COMPLETED state."""
-        return self.advance(session_id, InterviewState.COMPLETED)
+        """Move a session into the COMPLETED state, stamping its completion time."""
+        current = self.get_session(session_id)
+        self._state_machine.transition(InterviewState(current.state), InterviewState.COMPLETED)
+        self._sessions.update_state(session_id, InterviewState.COMPLETED.value, completed_at=utc_now())
+        return self.get_session(session_id)

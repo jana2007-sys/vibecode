@@ -21,6 +21,54 @@
           "text": "Describe how Python's GIL affects multithreaded programs.",
           "difficulty": "hard",
           "expects": ["global interpreter lock", "thread safety", "io-bound", "cpu-bound"]
+        },
+        {
+          "id": "py-003",
+          "text": "What is the difference between a list and a dictionary in Python?",
+          "difficulty": "easy",
+          "expects": ["key-value pairs", "ordered", "lookup"]
+        },
+        {
+          "id": "py-004",
+          "text": "How do you handle exceptions in Python?",
+          "difficulty": "easy",
+          "expects": ["try", "except", "finally"]
+        },
+        {
+          "id": "py-005",
+          "text": "What is a decorator and how does it work?",
+          "difficulty": "medium",
+          "expects": ["higher-order function", "wrapper", "syntax sugar"]
+        },
+        {
+          "id": "py-006",
+          "text": "Explain the difference between the `is` operator and `==` in Python.",
+          "difficulty": "medium",
+          "expects": ["identity", "equality", "memory address"]
+        },
+        {
+          "id": "py-007",
+          "text": "How does Python's garbage collection work?",
+          "difficulty": "medium",
+          "expects": ["reference counting", "cycle detection", "generational"]
+        },
+        {
+          "id": "py-008",
+          "text": "Describe the differences between async/await and threads in Python.",
+          "difficulty": "hard",
+          "expects": ["event loop", "concurrency", "blocking"]
+        },
+        {
+          "id": "py-009",
+          "text": "What is a list comprehension and when would you use one?",
+          "difficulty": "easy",
+          "expects": ["concise", "construct", "readability"]
+        },
+        {
+          "id": "py-010",
+          "text": "How would you design a decorator that caches function results?",
+          "difficulty": "hard",
+          "expects": ["closure", "memoization", "cache key"]
         }
       ]
     },
@@ -41,6 +89,54 @@
           "text": "How does a B-tree index speed up query lookups?",
           "difficulty": "medium",
           "expects": ["logarithmic", "tree structure", "selectivity"]
+        },
+        {
+          "id": "db-003",
+          "text": "What is the difference between an inner join and a left join?",
+          "difficulty": "easy",
+          "expects": ["matching rows", "nulls", "join type"]
+        },
+        {
+          "id": "db-004",
+          "text": "What is an index and why does it matter for query performance?",
+          "difficulty": "easy",
+          "expects": ["lookup speed", "structure", "storage"]
+        },
+        {
+          "id": "db-005",
+          "text": "Explain the difference between normalization and denormalization.",
+          "difficulty": "medium",
+          "expects": ["redundancy", "integrity", "read performance"]
+        },
+        {
+          "id": "db-006",
+          "text": "What is a transaction and what does ACID stand for?",
+          "difficulty": "medium",
+          "expects": ["atomicity", "consistency", "isolation", "durability"]
+        },
+        {
+          "id": "db-007",
+          "text": "When would you choose a NoSQL store over a relational database?",
+          "difficulty": "hard",
+          "expects": ["schema flexibility", "scaling", "consistency"]
+        },
+        {
+          "id": "db-008",
+          "text": "How would you diagnose and fix a slow query?",
+          "difficulty": "medium",
+          "expects": ["explain plan", "index", "query plan"]
+        },
+        {
+          "id": "db-009",
+          "text": "What is the difference between a stored procedure and a view?",
+          "difficulty": "easy",
+          "expects": ["precompiled", "virtual table", "permissions"]
+        },
+        {
+          "id": "db-010",
+          "text": "How would you design a database schema to support sharding?",
+          "difficulty": "hard",
+          "expects": ["partition key", "distribution", "hotspots"]
         }
       ]
     },
@@ -55,6 +151,128 @@
           "text": "Design a URL shortener. What are the key components?",
           "difficulty": "hard",
           "expects": ["hash function", "database", "caching", "load balancer"]
+        },
+        {
+          "id": "sd-002",
+          "text": "Explain what an API endpoint is.",
+          "difficulty": "easy",
+          "expects": ["http", "request", "response"]
+        },
+        {
+          "id": "sd-003",
+          "text": "What is the difference between horizontal and vertical scaling?",
+          "difficulty": "easy",
+          "expects": ["more machines", "more resources", "bottlenecks"]
+        },
+        {
+          "id": "sd-004",
+          "text": "How would you design a caching layer for a web application?",
+          "difficulty": "medium",
+          "expects": ["cache key", "eviction", "invalidation"]
+        },
+        {
+          "id": "sd-005",
+          "text": "How does a load balancer distribute traffic?",
+          "difficulty": "medium",
+          "expects": ["health checks", "algorithm", "availability"]
+        },
+        {
+          "id": "sd-006",
+          "text": "What is eventual consistency and when is it acceptable?",
+          "difficulty": "medium",
+          "expects": ["replication", "stale reads", "tradeoff"]
+        },
+        {
+          "id": "sd-007",
+          "text": "What is the difference between REST and GraphQL?",
+          "difficulty": "easy",
+          "expects": ["endpoints", "query flexibility", "overfetching"]
+        },
+        {
+          "id": "sd-008",
+          "text": "How would you scale a read-heavy web service?",
+          "difficulty": "hard",
+          "expects": ["caching", "read replicas", "load balancing"]
+        },
+        {
+          "id": "sd-009",
+          "text": "Design a message queue for decoupling two services.",
+          "difficulty": "hard",
+          "expects": ["producer", "consumer", "durability"]
+        },
+        {
+          "id": "sd-010",
+          "text": "What is a CDN and why would you use one?",
+          "difficulty": "medium",
+          "expects": ["edge caching", "latency", "distribution"]
+        }
+      ]
+    },
+    {
+      "id": "topic-algorithms",
+      "title": "Algorithms & Data Structures",
+      "description": "Core algorithmic techniques, complexity analysis, and data structure tradeoffs.",
+      "weight": 1.1,
+      "questions": [
+        {
+          "id": "al-001",
+          "text": "Explain the difference between an array and a linked list.",
+          "difficulty": "easy",
+          "expects": ["contiguous memory", "pointers", "traversal"]
+        },
+        {
+          "id": "al-002",
+          "text": "What is a hash map and why is lookup usually constant time?",
+          "difficulty": "easy",
+          "expects": ["hashing", "buckets", "average case"]
+        },
+        {
+          "id": "al-003",
+          "text": "Explain the time complexity of a binary search.",
+          "difficulty": "medium",
+          "expects": ["logarithmic", "sorted input"]
+        },
+        {
+          "id": "al-004",
+          "text": "How would you find the most frequent element in a list?",
+          "difficulty": "medium",
+          "expects": ["hashmap", "counting", "linear time"]
+        },
+        {
+          "id": "al-005",
+          "text": "What is recursion and what are the risks of using it?",
+          "difficulty": "medium",
+          "expects": ["base case", "call stack", "stack overflow"]
+        },
+        {
+          "id": "al-006",
+          "text": "Explain how quicksort works and its average-case complexity.",
+          "difficulty": "hard",
+          "expects": ["pivot", "partitioning", "divide and conquer"]
+        },
+        {
+          "id": "al-007",
+          "text": "How would you detect a cycle in a linked list?",
+          "difficulty": "hard",
+          "expects": ["floyd's algorithm", "slow and fast pointers", "traversal"]
+        },
+        {
+          "id": "al-008",
+          "text": "What is the difference between a stack and a queue?",
+          "difficulty": "easy",
+          "expects": ["lifo", "fifo", "operations"]
+        },
+        {
+          "id": "al-009",
+          "text": "How would you implement a binary search tree and what is its lookup time?",
+          "difficulty": "hard",
+          "expects": ["balanced", "node ordering", "log n"]
+        },
+        {
+          "id": "al-010",
+          "text": "Explain breadth-first versus depth-first traversal.",
+          "difficulty": "medium",
+          "expects": ["queue", "stack", "ordering"]
         }
       ]
     }

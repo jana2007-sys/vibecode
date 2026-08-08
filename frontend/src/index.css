@@ -2,13 +2,111 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Base resets and defaults for the InterVue AI frontend. */
-html,
-body,
-#root {
-  height: 100%;
+/* ------------------------------------------------------------------ */
+/* InterVue AI design system base                                       */
+/* ------------------------------------------------------------------ */
+
+@layer base {
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
+  html {
+    color-scheme: dark;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-ink-950 font-sans text-slate-200 antialiased;
+    background-image:
+      radial-gradient(
+        60rem 40rem at 15% -10%,
+        rgba(99, 102, 241, 0.16),
+        transparent 60%
+      ),
+      radial-gradient(
+        50rem 35rem at 110% 10%,
+        rgba(139, 92, 246, 0.12),
+        transparent 60%
+      ),
+      radial-gradient(
+        45rem 40rem at 50% 120%,
+        rgba(14, 165, 233, 0.08),
+        transparent 60%
+      );
+    background-attachment: fixed;
+  }
+
+  ::selection {
+    @apply bg-indigo-500/40 text-white;
+  }
+
+  :focus-visible {
+    outline: none;
+  }
 }
 
-body {
-  @apply bg-slate-50 text-slate-900 antialiased;
+@layer components {
+  /* Glassmorphism surface. */
+  .glass {
+    @apply rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-xl;
+  }
+
+  .glass-strong {
+    @apply rounded-2xl border border-white/10 bg-ink-800/80 backdrop-blur-xl;
+  }
+
+  /* Gradient headline text. */
+  .text-gradient {
+    @apply bg-gradient-to-r from-indigo-300 via-violet-300 to-sky-300 bg-clip-text text-transparent;
+  }
+
+  /* Muted grid backdrop for hero sections. */
+  .bg-grid {
+    background-image:
+      linear-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
+    background-size: 44px 44px;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black 30%, transparent 75%);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Scrollbars                                                           */
+/* ------------------------------------------------------------------ */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: 9999px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ------------------------------------------------------------------ */
+/* Accessible reduced-motion handling                                    */
+/* ------------------------------------------------------------------ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

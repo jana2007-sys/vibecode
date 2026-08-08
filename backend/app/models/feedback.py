@@ -30,3 +30,4 @@ class FeedbackRead(BaseModelConfig):
     improvements: list[str] = Field(default_factory=list)
     topics: list[TopicSummary] = Field(default_factory=list)
     created_at: datetime
+    source: str = Field(default="deterministic")

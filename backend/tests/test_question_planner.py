@@ -3,7 +3,8 @@
 Uses a synthetic 5-topic curriculum fixture (13 grounded questions across easy /
 medium / hard) plus constructed candidate analyses so personalization, skipped
 topic handling, difficulty progression, and error paths are all deterministic.
-The real shipped curriculum (3 topics) is used to verify the clear-failure path.
+The real shipped curriculum (4 topics / 40 questions) is used to verify that a
+production-mode plan can be built against it.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from app.models.curriculum import Curriculum, InterviewPlan, QuestionTemplate, T
 from app.services.candidate_analyzer import CandidateAnalyzer
 from app.services.curriculum_loader import CurriculumLoader
 from app.services.question_planner import MIN_QUESTIONS, MIN_TOPICS, QuestionPlanner
+from app.utils.config import Settings
 from app.utils.errors import ValidationError
 
 REAL_DATA_DIR = Path(__file__).resolve().parents[1] / "app" / "data"
@@ -306,6 +308,18 @@ class TestPlanGeneration:
         assert plan.total_questions == 8
         assert len(set(plan.topics_covered)) >= MIN_TOPICS
 
+    def test_real_curriculum_builds_complete_plan(self) -> None:
+        """The shipped curriculum now meets production minimums (4 topics / 40 questions)."""
+        planner = QuestionPlanner(
+            curriculum_loader=CurriculumLoader(),
+            candidate_analyzer=CandidateAnalyzer(),
+        )
+        plan = planner.create_plan("candidate-001", "curriculum-001")
+        assert isinstance(plan, InterviewPlan)
+        assert plan.total_questions == MIN_QUESTIONS
+        assert len(set(plan.topics_covered)) >= MIN_TOPICS
+        assert plan.is_complete is True
+
 
 # --- Personalization / skipped topics ---------------------------------------
 
@@ -361,14 +375,6 @@ class TestDifficultyAndMetadata:
 
 
 class TestErrors:
-    def test_real_curriculum_has_insufficient_topics(self) -> None:
-        planner = QuestionPlanner(
-            curriculum_loader=CurriculumLoader(),
-            candidate_analyzer=CandidateAnalyzer(),
-        )
-        with pytest.raises(ValidationError, match="at least 4 usable topics"):
-            planner.create_plan("candidate-001", "curriculum-001")
-
     def test_insufficient_curriculum_topics_error(self) -> None:
         tiny = Curriculum(
             id="curriculum-tiny",
@@ -395,6 +401,120 @@ class TestErrors:
         )
         with pytest.raises(ValidationError, match="at least 8 are required"):
             _plan_for(_analysis_a(), short)
+
+
+# --- Development mode --------------------------------------------------------
+
+
+class TestDevelopmentMode:
+    def test_partial_curriculum_plans_instead_of_raising(self) -> None:
+        small = Curriculum(
+            id="curriculum-small",
+            title="Small",
+            topics=[
+                Topic(id="t1", title="One", questions=[_q("t1q1"), _q("t1q2")]),
+                Topic(id="t2", title="Two", questions=[_q("t2q1")]),
+                Topic(id="t3", title="Three", questions=[_q("t3q1"), _q("t3q2")]),
+            ],
+        )
+        plan = _plan_for(_analysis_a(), small, development_mode=True)
+        assert isinstance(plan, InterviewPlan)
+        assert plan.total_questions == 5
+        assert len(plan.questions) == 5
+        assert plan.is_complete is False
+        assert plan.completeness_metadata["missing_topics"] == 1
+        assert plan.completeness_metadata["missing_questions"] == 3
+        assert "incomplete" in plan.completeness_metadata["reason"]
+
+    def test_full_curriculum_selects_every_question(self, curriculum: Curriculum) -> None:
+        plan = _plan_for(_analysis_a(), curriculum, development_mode=True)
+        assert plan.total_questions == 13
+        assert plan.is_complete is True
+        assert plan.completeness_metadata["missing_topics"] == 0
+        assert plan.completeness_metadata["missing_questions"] == 0
+
+    def test_dev_mode_questions_are_grounded_and_unique(self, curriculum: Curriculum) -> None:
+        plan = _plan_for(_analysis_a(), curriculum, development_mode=True)
+        supplied_ids = {q.id for topic in curriculum.topics for q in topic.questions}
+        planned_ids = {q.curriculum_question_id for q in plan.questions}
+        assert planned_ids == supplied_ids
+        assert len(planned_ids) == plan.total_questions
+
+    def test_tiny_curriculum_single_question(self) -> None:
+        tiny = Curriculum(
+            id="curriculum-tiny-dev",
+            title="Tiny",
+            topics=[Topic(id="t1", title="One", questions=[_q("t1q1")])],
+        )
+        plan = _plan_for(_analysis_a(), tiny, development_mode=True)
+        assert plan.total_questions == 1
+        assert plan.questions[0].sequence == 1
+        assert plan.questions[0].follow_up_allowed is False
+        assert plan.is_complete is False
+        assert plan.completeness_metadata["missing_topics"] == 3
+        assert plan.completeness_metadata["missing_questions"] == 7
+
+    def test_empty_curriculum_dev_mode(self) -> None:
+        empty = Curriculum(id="curriculum-empty", title="Empty", topics=[])
+        plan = _plan_for(_analysis_a(), empty, development_mode=True)
+        assert plan.total_questions == 0
+        assert plan.questions == []
+        assert plan.topics_covered == []
+        assert plan.is_complete is False
+        assert plan.completeness_metadata["missing_topics"] == 4
+        assert plan.completeness_metadata["missing_questions"] == 8
+
+    def test_constructor_development_mode_applies_to_create_plan(self) -> None:
+        planner = QuestionPlanner(
+            curriculum_loader=CurriculumLoader(),
+            candidate_analyzer=CandidateAnalyzer(),
+            development_mode=True,
+        )
+        plan = planner.create_plan("candidate-001", "curriculum-001")
+        assert plan.total_questions == 40
+        assert plan.is_complete is True
+
+    def test_app_di_plans_real_curriculum_in_development_env(self) -> None:
+        """The app's DI wiring (dev env) must plan the shipped curriculum.
+
+        Phase 6 regression guard: with the default ``app_env == development``
+        the dependency graph builds the planner in development mode, so
+        ``POST /api/interview`` can actually start. The shipped curriculum
+        (4 topics / 40 questions) exceeds the production minimums, so even in
+        production mode a complete plan can be built.
+        """
+        settings = Settings()
+        assert settings.app_env == "development"
+        planner = QuestionPlanner(
+            curriculum_loader=CurriculumLoader(),
+            candidate_analyzer=CandidateAnalyzer(),
+            development_mode=settings.app_env != "production",
+        )
+        plan = planner.create_plan("candidate-001", "curriculum-001")
+        assert plan.total_questions == 40
+        assert plan.is_complete is True
+
+    def test_per_call_override_beats_constructor_default(self, curriculum: Curriculum) -> None:
+        planner = QuestionPlanner(
+            curriculum_loader=CurriculumLoader(data_dir=Path()),
+            candidate_analyzer=CandidateAnalyzer(data_dir=Path()),
+        )
+        plan = planner.plan_for(_analysis_a(), curriculum, development_mode=True)
+        assert plan.total_questions == 13
+        assert plan.is_complete is True
+
+    def test_production_mode_still_rejects_partial_curriculum(self) -> None:
+        small = Curriculum(
+            id="curriculum-small",
+            title="Small",
+            topics=[
+                Topic(id="t1", title="One", questions=[_q("t1q1")]),
+                Topic(id="t2", title="Two", questions=[_q("t2q1")]),
+                Topic(id="t3", title="Three", questions=[_q("t3q1")]),
+            ],
+        )
+        with pytest.raises(ValidationError, match="at least 4 usable topics"):
+            _plan_for(_analysis_a(), small)
 
 
 # --- Determinism -------------------------------------------------------------
@@ -433,9 +553,15 @@ def _q(question_id: str, difficulty: str = "medium") -> QuestionTemplate:
     return QuestionTemplate(id=question_id, text=f"Question {question_id}", difficulty=difficulty)
 
 
-def _plan_for(analysis: CandidateAnalysis, curriculum: Curriculum) -> InterviewPlan:
+def _plan_for(
+    analysis: CandidateAnalysis,
+    curriculum: Curriculum,
+    *,
+    development_mode: bool = False,
+) -> InterviewPlan:
     planner = QuestionPlanner(
         curriculum_loader=CurriculumLoader(data_dir=Path()),
         candidate_analyzer=CandidateAnalyzer(data_dir=Path()),
+        development_mode=development_mode,
     )
     return planner.plan_for(analysis, curriculum)

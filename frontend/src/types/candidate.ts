@@ -1,17 +1,22 @@
-/** Mirrors backend `SkillLevel`. */
+/** Candidate profile types.
+
+The wire shape matches the backend `CandidateProfile` model exactly (field
+names are snake_case) because the candidate object is passed through verbatim to
+`POST /api/interview` and the backend forbids extra fields. Nothing sensitive is
+ever stored or sent beyond what ships in `src/data/candidates.ts`.
+*/
+
 export interface SkillLevel {
   name: string;
-  level: "beginner" | "intermediate" | "advanced" | "unknown";
+  level: string;
 }
 
-/** Mirrors backend `LearningJourneyEntry`. */
 export interface LearningJourneyEntry {
-  type: "course" | "project" | "book" | "practice";
+  type: string;
   title: string;
   description?: string;
 }
 
-/** Mirrors backend `CandidateProfile`. */
 export interface CandidateProfile {
   id: string;
   name: string;

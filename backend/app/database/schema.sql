@@ -62,5 +62,6 @@ CREATE TABLE IF NOT EXISTS feedback (
     strengths     TEXT NOT NULL DEFAULT '[]',      -- JSON array
     improvements  TEXT NOT NULL DEFAULT '[]',      -- JSON array
     topics        TEXT NOT NULL DEFAULT '[]',      -- JSON array of TopicSummary
-    created_at    TEXT NOT NULL
+    created_at    TEXT NOT NULL,
+    source        TEXT NOT NULL DEFAULT 'deterministic'   -- ai | deterministic
 );
