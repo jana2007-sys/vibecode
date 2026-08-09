@@ -10,6 +10,7 @@ import {
 function form(overrides: Partial<CustomProfileFormData> = {}): CustomProfileFormData {
   return {
     name: "Riley Doe",
+    email: "riley@example.com",
     role: "Backend Developer",
     experienceLevel: "mid",
     programmingLanguages: "Python, SQL",
@@ -17,6 +18,8 @@ function form(overrides: Partial<CustomProfileFormData> = {}): CustomProfileForm
     focusAreas: "Backend API design, Databases",
     projects: "RESTful Blog API\nELT Pipeline",
     technologies: "PostgreSQL, Docker",
+    strengths: "Debugging, Collaboration",
+    notes: "Loves systems design.",
     ...overrides,
   };
 }
@@ -41,6 +44,16 @@ describe("validateCustomProfile", () => {
     expect(validateCustomProfile(form({ name: "  " }))).toBe("Please enter the candidate's name.");
   });
 
+  it("requires an email", () => {
+    expect(validateCustomProfile(form({ email: "" }))).toBe("Please enter the candidate's email.");
+  });
+
+  it("requires a well-formed email", () => {
+    expect(validateCustomProfile(form({ email: "not-an-email" }))).toBe(
+      "Please enter a valid email address."
+    );
+  });
+
   it("requires a role", () => {
     expect(validateCustomProfile(form({ role: "" }))).toBe("Please enter the target role.");
   });
@@ -51,9 +64,11 @@ describe("validateCustomProfile", () => {
 });
 
 describe("buildCustomProfile", () => {
-  it("uses the custom- id prefix for difficulty personalization", () => {
+  it("builds a CandidateCreate payload with a name, email, and role", () => {
     const profile = buildCustomProfile(form());
-    expect(profile.id.startsWith("custom-")).toBe(true);
+    expect(profile.name).toBe("Riley Doe");
+    expect(profile.email).toBe("riley@example.com");
+    expect(profile.role).toBe("Backend Developer");
   });
 
   it("maps experience level to skill levels and years", () => {
@@ -82,20 +97,30 @@ describe("buildCustomProfile", () => {
     expect(profile.skills.every((skill) => skill.level === "intermediate")).toBe(true);
   });
 
-  it("splits languages, focus areas, and projects", () => {
+  it("splits languages, focus areas, projects, and strengths", () => {
     const profile = buildCustomProfile(form());
     expect(profile.preferred_languages).toEqual(["Python", "SQL"]);
     expect(profile.focus_areas).toEqual(["Backend API design", "Databases"]);
+    expect(profile.strengths).toEqual(["Debugging", "Collaboration"]);
     expect(profile.learning_journey).toEqual([
       { type: "project", title: "RESTful Blog API", description: "" },
       { type: "project", title: "ELT Pipeline", description: "" },
     ]);
   });
 
-  it("trims the name and role", () => {
-    const profile = buildCustomProfile(form({ name: "  Riley Doe  ", role: "  Backend Developer " }));
+  it("trims the name, email, role, and notes", () => {
+    const profile = buildCustomProfile(
+      form({
+        name: "  Riley Doe  ",
+        email: "  riley@example.com  ",
+        role: "  Backend Developer ",
+        notes: "  Some notes.  ",
+      })
+    );
     expect(profile.name).toBe("Riley Doe");
+    expect(profile.email).toBe("riley@example.com");
     expect(profile.role).toBe("Backend Developer");
+    expect(profile.notes).toBe("Some notes.");
   });
 
   it("exposes the supported experience levels", () => {

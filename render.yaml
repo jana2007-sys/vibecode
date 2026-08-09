@@ -1,0 +1,65 @@
+# Render Blueprint — one-click deployment for InterVue AI.
+#
+# Creates: a PostgreSQL database, the FastAPI backend (Web Service), and the
+# built React frontend (Static Site). Deploy with the "Blueprint" option in the
+# Render dashboard, or via the Render CLI:
+#   render blueprint launch
+#
+# Notes:
+#  * DATABASE_URL is injected from the managed PostgreSQL instance. When the
+#    backend sees a postgres:// DSN it automatically uses PostgreSQL (schema is
+#    backend/app/database/schema_postgres.sql).
+#  * GEMINI_API_KEY is intentionally NOT hardcoded here. Set it via a Render
+#    Secret File / environment group, or leave the deterministic evaluator on.
+#  * CORS_ORIGINS is wired to the frontend service URL automatically so API
+#    calls from the deployed UI are always allowed.
+#  * The SPA rewrites every route to /index.html so React Router works on
+#    refresh / deep links.
+
+databases:
+  - name: intervue-db
+    databaseName: intervue
+    user: intervue
+    plan: free
+
+services:
+  - type: web
+    name: intervue-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    healthCheckPath: /api/health
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: intervue-db
+          property: connectionString
+      - key: CORS_ORIGINS
+        fromService:
+          name: intervue-frontend
+          type: web
+          property: url
+      - key: GEMINI_ENABLED
+        value: "false"
+
+  - type: web
+    name: intervue-frontend
+    runtime: static
+    plan: free
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          name: intervue-api
+          type: web
+          property: url
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

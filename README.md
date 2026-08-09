@@ -169,16 +169,26 @@ without touching the engine.
 
 ---
 
-## 4. Database Schema (SQLite)
+## 4. Database Schema
 
-Canonical DDL lives in `backend/app/database/schema.sql`.
+Canonical DDL for the **public** tables lives in `backend/app/database/schema.sql`
+(SQLite) with a PostgreSQL twin at `schema_postgres.sql`. The **private archive**
+(see §5) lives in `private_schema.sql` / `private_schema_postgres.sql`.
+
+The backend auto-selects its backend: when `DATABASE_URL` is set to a
+`postgres://` DSN it connects to PostgreSQL and runs the `*_postgres.sql` DDL;
+otherwise it uses SQLite at `DATABASE_PATH` and the plain `schema.sql` files.
+Repositories are backend-agnostic, so no code changes are needed when switching.
 
 | Table | Purpose | Key relationships |
 |-------|---------|-------------------|
-| `sessions` | One interview run per candidate | `candidate_id`, `curriculum_id`, FK to `sessions.id` self-ref not needed |
+| `candidates` | Persistent candidate profiles | `id` PK, unique `email` |
+| `sessions` | One interview run per candidate | `candidate_id`, `curriculum_id` |
 | `messages` | Full conversation transcript | FK `session_id → sessions.id` |
 | `scores` | Per-question / per-topic scores | FK `session_id`, `question_id` |
 | `feedback` | Structured evaluation + report | FK `session_id` |
+| `enrolled_candidates` | (private) immutable enrolled-profile snapshot | mirrors `candidates` |
+| `enrolled_reports` | (private) full report of each completed interview | FK `candidate_id` |
 
 ### ERD (logical)
 
@@ -222,11 +232,22 @@ frontend contracts are already stable.
 | `CurriculumLoader` | Load & cache curriculum from `curriculum.json` | `curriculum.json` |
 | `QuestionPlanner` | Pick next question / topic based on state + curriculum | `CurriculumLoader`, `MemoryEngine` |
 | `InterviewEngine` | Orchestrate the conversation loop (top-level coordinator) | All other services |
-| `EvaluationEngine` | Score candidate answers per question/topic | `GeminiService`, `MessageRepository` |
+| `EvaluationEngine` | Score candidate answers per question/topic | `GeminiService`, `MessageRepository`, `AIVerifierEnsemble` |
+| `AIVerifierEnsemble` | Cross-check each answer with a panel of independent AIs; majority consensus gates the verdict and mark | `GeminiService`, `PromptBuilder` |
 | `MemoryEngine` | Summarize + compress long conversations | `ConversationMemory` |
 | `FeedbackGenerator` | Assemble structured report from scores | `EvaluationEngine`, `ScoreRepository` |
 | `PromptBuilder` | Build validated prompt payloads (future) | `prompts/templates` |
 | `GeminiService` | **Placeholder** — LLM call wrapper, disabled by config | — |
+
+### Scoring pipeline
+
+Every answer is first scored deterministically (lexical concept coverage × a
+length factor, fully explainable). When Gemini is enabled, AI semantic scoring
+is layered on top: with `AI_VERIFIER_MODELS` set, a **panel of independent AI
+models** verifies each answer — the majority decides whether it is correct and
+the consensus determines the 0-10 mark; without it, a single Gemini call judges
+the answer. Any AI failure falls back to the previous stage, so the AI can never
+break scoring.
 
 ---
 
@@ -272,25 +293,36 @@ curl -X POST http://127.0.0.1:8000/api/interview \
 | Variable | Backend / Frontend | Default | Purpose |
 |----------|--------------------|---------|---------|
 | `APP_ENV` | backend | `development` | Runtime environment |
-| `DATABASE_PATH` | backend | `data/intervue.db` | SQLite file location |
+| `DATABASE_PATH` | backend | `data/intervue.db` | SQLite file location (local dev) |
+| `DATABASE_URL` | backend | *(empty)* | `postgres://` DSN — when set, the backend uses PostgreSQL instead of SQLite |
 | `GEMINI_API_KEY` | backend | *(empty)* | Gemini key — **disabled for now** |
 | `GEMINI_MODEL` | backend | `gemini-2.0-flash` | Model identifier (future) |
 | `GEMINI_ENABLED` | backend | `false` | Master switch for LLM integration |
+| `AI_VERIFIER_MODELS` | backend | *(empty)* | Comma-separated model ids that independently verify every answer (multi-AI scoring) |
+| `AI_VERIFIER_AGREEMENT` | backend | `0.5` | Fraction of verifier AIs that must confirm an answer for it to count as correct |
 | `CORS_ORIGINS` | backend | `http://localhost:5173` | Allowed frontend origins |
-| `VITE_API_BASE_URL` | frontend | `http://127.0.0.1:8000/api` | Backend base URL |
+| `VITE_API_URL` | frontend | `/api` | Backend base URL (dev: `http://127.0.0.1:8000/api`); normalized to end with `/api` |
+| `VITE_API_BASE_URL` | frontend | *(legacy)* | Deprecated alias for `VITE_API_URL` |
 
 ---
 
 ## 9. Deployment Notes
 
+One-click deployment is defined in `render.yaml` (Render Blueprint): it provisions
+a managed **PostgreSQL** database, the FastAPI backend, and the static-built
+frontend, and wires `DATABASE_URL`, `CORS_ORIGINS`, and `VITE_API_URL` between
+them automatically.
+
 | Layer | Platform | Config |
 |-------|----------|--------|
-| Frontend | **Vercel** | Build `npm run build`, output `dist`; rewrite all routes to `index.html` for SPA routing |
-| Backend | **Render** | Start command `uvicorn app.main:app --host 0.0.0.0 --port $PORT`; SQLite persisted via Render disk mounted at `DATABASE_PATH` |
+| Frontend | **Render** (Static Site) | Build `npm run build`, output `dist`; SPA rewrite `/* → /index.html` in `render.yaml` |
+| Backend | **Render** (Web Service) | Start `uvicorn app.main:app --host 0.0.0.0 --port $PORT`; health check `/api/health` |
+| Database | **Render** (PostgreSQL) | Managed, wired via `DATABASE_URL`; schema auto-initialized from `schema_postgres.sql` |
 
-> SQLite is single-file; in production attach a Render persistent disk. For
-> multi-instance scaling, swap the repository layer for PostgreSQL (contracts
-> are already repository-isolated).
+> Local development stays on SQLite (`DATABASE_PATH`) with zero config; the
+> repository layer is backend-agnostic, so switching to PostgreSQL in production
+> requires only setting `DATABASE_URL`. The backend never runs a render-time
+> migration — it applies the idempotent DDL on startup.
 
 ---
 

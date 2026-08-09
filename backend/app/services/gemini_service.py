@@ -94,7 +94,8 @@ class GeminiService:
 
         Uses the SDK's JSON response capability (``response_mime_type`` +
         ``response_schema``), parses the response text, and validates the
-        structure against ``schema`` before returning. Raises
+        structure against ``schema`` before returning. Pass ``model=`` to target
+        a specific model (defaults to the configured ``GEMINI_MODEL``). Raises
         ``ValidationError`` when the response is malformed or does not satisfy
         the expected structure, ``LLMError`` on API/empty failures, and
         ``LLMUnavailableError`` when disabled.
@@ -131,12 +132,17 @@ class GeminiService:
         schema: dict | None,
         **kwargs: Any,
     ) -> Any:
-        """Run the SDK call, mapping every failure onto the error hierarchy."""
+        """Run the SDK call, mapping every failure onto the error hierarchy.
+
+        ``model`` (optional keyword) selects a specific model; otherwise the
+        configured ``GEMINI_MODEL`` is used.
+        """
+        model = kwargs.pop("model", None)
         try:
             client = self._get_client()
             config = self._build_config(mime_type=mime_type, schema=schema, **kwargs)
             return client.models.generate_content(
-                model=self._settings.gemini_model,
+                model=model or self._settings.gemini_model,
                 contents=prompt,
                 config=config,
             )

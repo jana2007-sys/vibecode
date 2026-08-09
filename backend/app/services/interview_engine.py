@@ -29,6 +29,7 @@ from collections import Counter
 from dataclasses import replace as replace_decision
 
 from app.database.repositories.message_repository import MessageRepository
+from app.database.repositories.candidate_repository import CandidateRepository
 from app.models.candidate import CandidateProfile
 from app.models.common import new_uuid, utc_now
 from app.models.interview import InterviewFeedback, InterviewTurnResponse
@@ -43,6 +44,7 @@ from app.services.adaptive_decider import (
 )
 from app.services.candidate_analyzer import CandidateAnalyzer
 from app.services.curriculum_loader import CurriculumLoader
+from app.services.enrollment_store import EnrollmentStore
 from app.services.evaluation_engine import EvaluationEngine
 from app.services.feedback_generator import FeedbackGenerator, NEXT_STEP_PREFIX
 from app.services.follow_up_advisor import FollowUpAdvisor
@@ -78,6 +80,8 @@ class InterviewEngine:
         default_curriculum_id: str = DEFAULT_CURRICULUM_ID,
         follow_up_advisor: FollowUpAdvisor | None = None,
         adaptive_decider: AdaptiveDecider | None = None,
+        candidate_repository: CandidateRepository | None = None,
+        enrollment_store: EnrollmentStore | None = None,
     ) -> None:
         self._sessions = session_manager
         self._planner = question_planner
@@ -90,6 +94,8 @@ class InterviewEngine:
         self._default_curriculum_id = default_curriculum_id
         self._follow_up_advisor = follow_up_advisor
         self._adaptive_decider = adaptive_decider
+        self._candidate_repo = candidate_repository
+        self._enrollment_store = enrollment_store
 
     # --- Entry points --------------------------------------------------------
 
@@ -104,6 +110,7 @@ class InterviewEngine:
 
         curriculum = self._curriculum.load_curriculum(self._default_curriculum_id)
         analysis = self._analyzer.analyze_profile(candidate)
+        self._persist_candidate_profile(candidate)
         # Seed the deck with the session id so every interview draws a fresh
         # set of questions from the bank: the same profile re-run (or a demo
         # of several candidates) never repeats the identical questions. The
@@ -467,6 +474,7 @@ class InterviewEngine:
         report = self._feedback.generate_report(session_id)
         closing = self._build_closing(report)
         self._persist_interviewer(session_id, closing, question=None, kind="closing")
+        self._archive_completed(context, session_id)
         logger.info("Interview %s completed (overall %.2f)", session_id, report.overall_score)
         return InterviewTurnResponse(
             reply=closing,
@@ -474,7 +482,52 @@ class InterviewEngine:
             feedback=self._to_feedback(context, report),
         )
 
+    def _archive_completed(self, context: dict, session_id: str) -> None:
+        """Archive an enrolled candidate + their report into the private DB.
+
+        Only enrolled (custom-*) candidates are archived. A failure to archive
+        must never fail the interview, so errors are logged and swallowed.
+        """
+        if self._enrollment_store is None:
+            return
+        try:
+            self._enrollment_store.archive_completed_interview(
+                context["candidate_id"],
+                session_id,
+            )
+        except Exception:  # noqa: BLE001 - archive failure must not break the interview
+            logger.exception(
+                "Failed to archive interview %s to the private database", session_id
+            )
+
     # --- Messages ------------------------------------------------------------
+
+    def _persist_candidate_profile(self, candidate: CandidateProfile) -> None:
+        """Persist the candidate row when the interview starts.
+
+        Creates the row only when missing so predefined profiles (seeded with an
+        email and strengths) are never clobbered by the wire profile, which
+        carries neither.
+        """
+        if self._candidate_repo is None:
+            return
+        if self._candidate_repo.get_by_id(candidate.id) is not None:
+            return
+        self._candidate_repo.upsert(
+            candidate_id=candidate.id,
+            name=candidate.name,
+            email=None,
+            role=candidate.role,
+            years_of_experience=candidate.years_of_experience,
+            experience_level=candidate.experience_level,
+            skills=[skill.model_dump(mode="json") for skill in candidate.skills],
+            learning_journey=[entry.model_dump(mode="json") for entry in candidate.learning_journey],
+            preferred_languages=candidate.preferred_languages,
+            focus_areas=candidate.focus_areas,
+            strengths=[],
+            notes=candidate.notes,
+            now=utc_now(),
+        )
 
     def _persist_interviewer(
         self,

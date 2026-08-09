@@ -214,3 +214,86 @@ export function LayersIcon({ className }: IconProps) {
     </svg>
   );
 }
+
+export function SunIcon({ className }: IconProps) {
+  return (
+    <svg {...base(className)}>
+      <circle cx="12" cy="12" r="4.5" />
+      <path d="M12 2v2.5" />
+      <path d="M12 19.5V22" />
+      <path d="M4.9 4.9l1.8 1.8" />
+      <path d="M17.3 17.3l1.8 1.8" />
+      <path d="M2 12h2.5" />
+      <path d="M19.5 12H22" />
+      <path d="M4.9 19.1l1.8-1.8" />
+      <path d="M17.3 6.7l1.8-1.8" />
+    </svg>
+  );
+}
+
+export function MoonIcon({ className }: IconProps) {
+  return (
+    <svg {...base(className)}>
+      <path d="M20.5 14.5A8.5 8.5 0 019.5 3.5a8.5 8.5 0 1011 11z" />
+    </svg>
+  );
+}
+
+export function DownloadIcon({ className }: IconProps) {
+  return (
+    <svg {...base(className)}>
+      <path d="M12 3v12" />
+      <path d="M7 10l5 5 5-5" />
+      <path d="M4 21h16" />
+    </svg>
+  );
+}
+
+export function HistoryIcon({ className }: IconProps) {
+  return (
+    <svg {...base(className)}>
+      <path d="M3 12a9 9 0 109-9" />
+      <path d="M3 4v5h5" />
+      <path d="M12 7v5l3 3" />
+    </svg>
+  );
+}
+
+export function SearchIcon({ className }: IconProps) {
+  return (
+    <svg {...base(className)}>
+      <circle cx="11" cy="11" r="7" />
+      <path d="M21 21l-4.3-4.3" />
+    </svg>
+  );
+}
+
+export function MailIcon({ className }: IconProps) {
+  return (
+    <svg {...base(className)}>
+      <rect x="2.5" y="5" width="19" height="14" rx="2" />
+      <path d="M2.5 7l9.5 6 9.5-6" />
+    </svg>
+  );
+}
+
+export function ClockIcon({ className }: IconProps) {
+  return (
+    <svg {...base(className)}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </svg>
+  );
+}
+
+export function TrashIcon({ className }: IconProps) {
+  return (
+    <svg {...base(className)}>
+      <path d="M3 6h18" />
+      <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+    </svg>
+  );
+}

@@ -37,15 +37,19 @@ word concepts require all their tokens. Empty or blank answers score ``0.0``.
 The same ``(answer, expects)`` input always produces the same result.
 
 Semantic (AI) evaluation
-------------------------
+-----------------------
 
 When ``_try_ai_evaluate`` runs it sends the question, expected concepts, the
-candidate's actual answer, and the deterministic coverage signal to Gemini and
-adopts its 0-10 score, reasoning, and feedback. The model judges correctness,
-not keyword matching, so a correct answer phrased differently from the expected
-vocabulary is credited. AI-suggested covered/missing concepts are accepted only
-when they name an expected concept exactly, so the LLM can never invent
-curriculum facts. Every Gemini failure degrades to the deterministic result.
+candidate's actual answer, and the deterministic coverage signal to the AI
+layer. When a multi-AI verifier panel is configured (``AI_VERIFIER_MODELS``),
+every configured model independently verifies whether the answer is correct
+and awards its own 0-10 mark; the consensus verdict and score are adopted.
+Without a panel, a single Gemini call adopts its 0-10 score, reasoning, and
+feedback. The model(s) judge correctness, not keyword matching, so a correct
+answer phrased differently from the expected vocabulary is credited.
+AI-suggested covered/missing concepts are accepted only when they name an
+expected concept exactly, so the LLM can never invent curriculum facts. Every
+AI failure degrades to the deterministic result.
 
 Limitations: the deterministic heuristic is a lexical coverage heuristic, not
 comprehension. It cannot judge whether an answer is *correct* or how well the
@@ -67,6 +71,11 @@ from app.database.repositories.score_repository import ScoreRepository
 from app.models.common import new_uuid, utc_now
 from app.services.gemini_service import GeminiService
 from app.services.prompt_builder import EVALUATION_SCHEMA, PromptBuilder
+from app.services.verification_service import (
+    VERDICT_CORRECT,
+    AIVerifierEnsemble,
+    Verification,
+)
 from app.utils.errors import ValidationError
 from app.utils.logging import get_logger
 
@@ -581,11 +590,13 @@ class EvaluationEngine:
         score_repository: ScoreRepository,
         message_repository: MessageRepository,
         prompt_builder: PromptBuilder | None = None,
+        verifier: AIVerifierEnsemble | None = None,
     ) -> None:
         self._gemini = gemini_service
         self._scores = score_repository
         self._messages = message_repository
         self._builder = prompt_builder
+        self._verifier = verifier
 
     # --- Deterministic concept coverage --------------------------------------
 
@@ -740,29 +751,50 @@ class EvaluationEngine:
         question: dict | None,
         deterministic: AnswerEvaluation,
     ) -> AnswerEvaluation | None:
-        """Return a Gemini-backed semantic evaluation, or ``None`` to keep deterministic.
+        """Return an AI-backed evaluation, or ``None`` to keep deterministic.
 
-        Called only when Gemini is enabled and a prompt builder is wired; every
-        failure (disabled, no builder, LLM error, malformed or ungrounded JSON)
-        degrades gracefully to ``None`` so Gemini can never break scoring. An
-        empty answer is never sent to the model.
+        Called only when an AI layer is available; every failure (disabled, no
+        builder, LLM error, malformed or ungrounded JSON) degrades gracefully to
+        ``None`` so the AI can never break scoring. An empty answer is never sent
+        to the model. When a multi-AI verifier panel is wired it owns the
+        verdict; otherwise a single Gemini semantic evaluation is used.
         """
+        if not answer.strip():
+            return None
+
+        deterministic_signal = {
+            "covered": deterministic.matched_concepts,
+            "missing": deterministic.missing_concepts,
+        }
+        if self._verifier is not None and self._verifier.enabled:
+            verification = self._verifier.verify(
+                session_id,
+                question or {},
+                answer,
+                deterministic_signal,
+            )
+            if verification is not None:
+                evaluation = self._from_verification(verification, expects, answer, deterministic)
+                logger.info(
+                    "Verified answer for %s: %.2f/10 (%d/%d models agree)",
+                    session_id,
+                    evaluation.score,
+                    verification.agreed,
+                    verification.total,
+                )
+                return evaluation
+
         if not self._gemini.enabled:
             return None
         if self._builder is None:
             logger.warning("Gemini enabled but no prompt builder wired; using deterministic score.")
-            return None
-        if not answer.strip():
             return None
         try:
             prompt = self._builder.build_evaluation_prompt(
                 session_id=session_id,
                 question=question or {},
                 answer=answer,
-                deterministic={
-                    "covered": deterministic.matched_concepts,
-                    "missing": deterministic.missing_concepts,
-                },
+                deterministic=deterministic_signal,
             )
             result = self._gemini.generate_json(prompt, EVALUATION_SCHEMA)
             evaluation = self._normalize_ai_evaluation(result, expects, answer, deterministic)
@@ -781,6 +813,43 @@ class EvaluationEngine:
                 type(exc).__name__,
             )
             return None
+
+    @classmethod
+    def _from_verification(
+        cls,
+        verification: Verification,
+        expects: list[str],
+        answer: str,
+        deterministic: AnswerEvaluation,
+    ) -> AnswerEvaluation:
+        """Convert the verifier panel's consensus into an :class:`AnswerEvaluation`.
+
+        The score is the panel's consensus mark (clamped/rounded). Covered and
+        missing concepts come from the deterministic signal, which is already
+        grounded to the curriculum's ``expects``.
+        """
+        score = round(max(0.0, min(10.0, verification.score)), 2)
+        total = len(expects)
+        covered = list(deterministic.matched_concepts)
+        missing = list(deterministic.missing_concepts)
+        coverage = round(len(covered) / total, 2) if total else 1.0
+        reasoning = verification.reasoning or None
+        feedback = verification.feedback or deterministic.feedback
+        if verification.verdict == VERDICT_CORRECT and not feedback:
+            feedback = (
+                f"{verification.agreed} of {verification.total} AI models "
+                "verified this answer as correct."
+            )
+        return AnswerEvaluation(
+            score=score,
+            matched_concepts=covered,
+            missing_concepts=missing,
+            expected_concepts=total,
+            coverage=coverage,
+            completeness=cls._ai_completeness(answer, score),
+            reasoning=reasoning,
+            feedback=feedback,
+        )
 
     @classmethod
     def _normalize_ai_evaluation(

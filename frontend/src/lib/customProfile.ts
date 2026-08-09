@@ -1,23 +1,20 @@
-/** Build a backend-ready ``CandidateProfile`` from the "Create Your Profile" form.
+/** Build a backend-ready ``CandidateCreate`` payload from the "Create Your Profile" form.
 
-The wire shape matches the backend ``CandidateProfile`` model exactly (field
-names are snake_case, no extra fields allowed). Custom profiles use the
-``custom-`` id prefix so the backend personalizes the plan the same way it does
-for predefined candidates — through CandidateAnalyzer -> QuestionPlanner ->
-InterviewEngine -> EvaluationEngine -> FollowUpAdvisor -> FeedbackGenerator.
-
-Level mapping: the form's experience level drives each skill's self-reported
-level so the planner's keyword weights reflect the candidate (junior -> beginner
-gaps, mid -> intermediate, senior -> advanced) and the difficulty mix stays
+The payload mirrors the backend ``CandidateCreate`` model so the candidate is
+persisted by ``POST /api/candidates`` and gets a real database id. Level mapping
+stays: the form's experience level drives each skill's self-reported level so
+the planner's keyword weights reflect the candidate (junior -> beginner gaps,
+mid -> intermediate, senior -> advanced) and the difficulty mix stays
 appropriate (junior leans easy, senior leans hard).
 */
 
-import type { CandidateProfile, SkillLevel } from "../types/candidate";
+import type { CandidateCreate, SkillLevel } from "../types/candidate";
 
 export type ExperienceLevel = "junior" | "mid" | "senior";
 
 export interface CustomProfileFormData {
   name: string;
+  email: string;
   role: string;
   experienceLevel: ExperienceLevel;
   programmingLanguages: string;
@@ -25,6 +22,8 @@ export interface CustomProfileFormData {
   focusAreas: string;
   projects: string;
   technologies: string;
+  strengths: string;
+  notes: string;
 }
 
 /** Skill level each technical skill/technology is reported at, per experience level. */
@@ -56,14 +55,6 @@ export function splitList(value: string): string[] {
   return items;
 }
 
-function makeId(): string {
-  try {
-    return `custom-${crypto.randomUUID()}`;
-  } catch {
-    return `custom-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-  }
-}
-
 /** Merge technical skills and technologies into a deduplicated skill list. */
 function collectSkills(data: CustomProfileFormData): SkillLevel[] {
   const level = SKILL_LEVEL_BY_EXPERIENCE[data.experienceLevel];
@@ -74,11 +65,11 @@ function collectSkills(data: CustomProfileFormData): SkillLevel[] {
   return names.map((name) => ({ name, level }));
 }
 
-/** Convert the "Create Your Profile" form into the backend ``CandidateProfile`` contract. */
-export function buildCustomProfile(data: CustomProfileFormData): CandidateProfile {
+/** Convert the "Create Your Profile" form into a backend ``CandidateCreate`` payload. */
+export function buildCustomProfile(data: CustomProfileFormData): CandidateCreate {
   return {
-    id: makeId(),
     name: data.name.trim(),
+    email: data.email.trim(),
     role: data.role.trim(),
     experience_level: data.experienceLevel,
     years_of_experience: YEARS_BY_EXPERIENCE[data.experienceLevel],
@@ -90,13 +81,18 @@ export function buildCustomProfile(data: CustomProfileFormData): CandidateProfil
     })),
     preferred_languages: splitList(data.programmingLanguages),
     focus_areas: splitList(data.focusAreas),
-    notes: "",
+    strengths: splitList(data.strengths),
+    notes: data.notes.trim(),
   };
 }
 
-/** Minimal client-side validation: a custom profile needs a name and a role. */
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Minimal client-side validation: a custom profile needs a name, email, and role. */
 export function validateCustomProfile(data: CustomProfileFormData): string | null {
   if (!data.name.trim()) return "Please enter the candidate's name.";
+  if (!data.email.trim()) return "Please enter the candidate's email.";
+  if (!EMAIL_RE.test(data.email.trim())) return "Please enter a valid email address.";
   if (!data.role.trim()) return "Please enter the target role.";
   return null;
 }

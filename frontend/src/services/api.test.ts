@@ -86,3 +86,86 @@ describe("parseInterviewResponse", () => {
     expect(() => parseInterviewResponse({ reply: "x", done: "yes" })).toThrow();
   });
 });
+
+describe("candidate endpoints", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("lists candidates from GET /api/candidates", async () => {
+    const items = [
+      { id: "candidate-001", name: "Alex Rivera", email: "alex@example.com", skills: [], learning_journey: [] },
+    ];
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      jsonResponse({ items, total: 1 })
+    );
+
+    const result = await api.listCandidates();
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "/api/candidates",
+      expect.anything()
+    );
+    expect(result).toEqual({ items, total: 1 });
+  });
+
+  it("creates a candidate with POST /api/candidates", async () => {
+    const created = { id: "candidate-999", name: "Riley Doe", skills: [], learning_journey: [] };
+    vi.mocked(globalThis.fetch).mockResolvedValue(jsonResponse(created));
+
+    const result = await api.createCandidate({
+      name: "Riley Doe",
+      email: "riley@example.com",
+      role: "Backend Developer",
+      skills: [],
+      learning_journey: [],
+    });
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "/api/candidates",
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(postedBody()).toMatchObject({ name: "Riley Doe", email: "riley@example.com" });
+    expect(result).toEqual(created);
+  });
+
+  it("fetches a candidate's interview history", async () => {
+    const history = { candidate_id: "candidate-001", items: [], total: 0 };
+    vi.mocked(globalThis.fetch).mockResolvedValue(jsonResponse(history));
+
+    const result = await api.getCandidateHistory("candidate-001");
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "/api/candidates/candidate-001/interviews",
+      expect.anything()
+    );
+    expect(result).toEqual(history);
+  });
+
+  it("fetches a report for a session", async () => {
+    const report = {
+      session_id: "sess-1",
+      candidate: { id: "candidate-001", name: "Alex Rivera", role: "Backend Engineer" },
+      feedback: { summary: "Nice", strengths: [], improvements: [], topics: [] },
+    };
+    vi.mocked(globalThis.fetch).mockResolvedValue(jsonResponse(report));
+
+    const result = await api.getReport("candidate-001", "sess-1");
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "/api/candidates/candidate-001/interviews/sess-1/report",
+      expect.anything()
+    );
+    expect(result).toEqual(report);
+  });
+
+  it("builds the PDF download URL", () => {
+    expect(api.reportPdfUrl("candidate-001", "sess-1")).toBe(
+      "/api/candidates/candidate-001/interviews/sess-1/report/pdf"
+    );
+  });
+});

@@ -63,10 +63,11 @@ export function Interview() {
   useEffect(() => {
     if (done && !navigatedRef.current) {
       navigatedRef.current = true;
-      const timer = setTimeout(() => navigate("/report"), 1600);
+      const target = sessionId ? `/report?session=${sessionId}` : "/report";
+      const timer = setTimeout(() => navigate(target), 1600);
       return () => clearTimeout(timer);
     }
-  }, [done, navigate]);
+  }, [done, navigate, sessionId]);
 
   async function handleSubmit(event?: FormEvent) {
     event?.preventDefault();
@@ -106,10 +107,10 @@ export function Interview() {
   if (loading && !sessionId && messages.length === 0) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-4 px-4 text-center">
-        <div className="flex h-16 w-16 animate-float items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-glow-strong">
+        <div className="flex h-16 w-16 animate-float items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 to-cyan-500 text-white shadow-glow-strong ring-1 ring-inset ring-white/20">
           <SparklesIcon className="h-8 w-8" />
         </div>
-        <p className="text-lg font-semibold text-white">AI is thinking…</p>
+        <p className="text-lg font-semibold text-slate-900 dark:text-white">AI is thinking…</p>
         <p className="text-sm text-slate-500">
           Preparing a personalized interview for {candidate.name}
         </p>
@@ -148,13 +149,13 @@ export function Interview() {
     return (
       <div className="flex flex-1 items-center justify-center px-4">
         <Card className="w-full max-w-lg p-8 text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-glow">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 to-cyan-500 text-white shadow-glow ring-1 ring-inset ring-white/20">
             <SparklesIcon className="h-7 w-7" />
           </div>
-          <h2 className="mt-5 text-2xl font-bold tracking-tight text-white">
+          <h2 className="mt-5 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
             Ready for your technical interview?
           </h2>
-          <p className="mt-2 text-sm leading-relaxed text-slate-400">
+          <p className="mt-2 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
             {candidate.name} will be asked curriculum-grounded questions, and
             the interviewer will adapt follow-ups to each answer.
           </p>
@@ -183,14 +184,14 @@ export function Interview() {
       <header className="glass shrink-0 px-4 py-3 sm:px-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2.5">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-lg shadow-indigo-500/30">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-teal-500 to-cyan-500 text-white shadow-lg shadow-teal-500/30 ring-1 ring-inset ring-white/20">
               <SparklesIcon className="h-4 w-4" />
             </div>
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-white">
+              <p className="truncate text-sm font-semibold text-slate-900 dark:text-white">
                 Technical Interview
               </p>
-              <p className="truncate text-xs text-slate-400">
+              <p className="truncate text-xs text-slate-500 dark:text-slate-400">
                 {candidate.name}
                 {candidate.role ? ` · ${candidate.role}` : ""}
               </p>
@@ -202,9 +203,9 @@ export function Interview() {
                 {progress.topicTitle}
               </Badge>
             ) : null}
-            <span className="whitespace-nowrap text-sm font-semibold text-slate-200">
+            <Badge tone="cyan" className="whitespace-nowrap">
               Question {progress.current} of {progress.totalQuestions}
-            </span>
+            </Badge>
           </div>
         </div>
         <div className="mt-3">
@@ -250,17 +251,20 @@ export function Interview() {
       {isCompleted ? (
         <div className="glass-strong flex shrink-0 flex-col items-center justify-between gap-4 px-4 py-4 sm:flex-row sm:px-6">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-400/30 bg-emerald-500/15 text-emerald-300">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-teal-400/30 bg-teal-500/15 text-teal-700 dark:text-teal-300">
               <CheckIcon className="h-5 w-5" />
             </div>
             <div>
-              <p className="font-semibold text-white">Interview complete</p>
-              <p className="text-sm text-slate-400">
+              <p className="font-semibold text-slate-900 dark:text-white">Interview complete</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
                 Opening your report…
               </p>
             </div>
           </div>
-          <Button to="/report" className="w-full sm:w-auto">
+          <Button
+            to={sessionId ? `/report?session=${sessionId}` : "/report"}
+            className="w-full sm:w-auto"
+          >
             View Report
             <ArrowRightIcon className="h-4 w-4" />
           </Button>
@@ -273,12 +277,12 @@ export function Interview() {
           {error ? (
             <div
               role="alert"
-              className="flex items-start gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2.5 text-sm text-rose-200"
+              className="flex items-start gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2.5 text-sm text-rose-700 dark:text-rose-200"
             >
               <AlertCircleIcon className="mt-0.5 h-4 w-4 shrink-0" />
               <div>
                 <p className="font-semibold">Your answer wasn't sent.</p>
-                <p className="text-rose-300/90">{error}</p>
+                <p className="text-rose-700/90 dark:text-rose-300/90">{error}</p>
               </div>
             </div>
           ) : null}
@@ -294,7 +298,7 @@ export function Interview() {
             rows={4}
             placeholder="Explain your approach…"
             aria-label="Your answer"
-            className="w-full resize-none rounded-xl border border-white/10 bg-ink-900/60 px-4 py-3 text-[15px] leading-relaxed text-slate-100 placeholder:text-slate-500 transition-colors focus:border-indigo-400/50 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+            className="w-full resize-none rounded-xl border border-slate-300 bg-white px-4 py-3 text-[15px] leading-relaxed text-slate-900 placeholder:text-slate-400 transition-colors focus:border-teal-400/60 focus:outline-none focus:ring-2 focus:ring-teal-500/30 dark:border-white/10 dark:bg-ink-900/60 dark:text-slate-100 dark:placeholder:text-slate-500"
           />
           <div className="flex flex-col-reverse items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="hidden text-xs text-slate-500 sm:block">

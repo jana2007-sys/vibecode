@@ -25,10 +25,10 @@ export function ProgressBar({
       aria-valuemin={0}
       aria-valuemax={100}
       aria-label={ariaLabel}
-      className={`h-1.5 w-full overflow-hidden rounded-full bg-white/10 ${className ?? ""}`}
+      className={`h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-white/10 ${className ?? ""}`}
     >
       <div
-        className="h-full rounded-full bg-gradient-to-r from-indigo-500 via-violet-500 to-fuchsia-500 shadow-[0_0_12px_rgba(139,92,246,0.6)] transition-all duration-700 ease-out"
+        className="h-full rounded-full bg-gradient-to-r from-teal-400 via-cyan-500 to-sky-400 shadow-[0_0_12px_rgba(6,182,212,0.55)] transition-all duration-700 ease-out"
         style={{ width: `${percent}%` }}
       />
     </div>

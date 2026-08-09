@@ -9,7 +9,7 @@ export function Card({
 }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={`rounded-2xl border border-white/10 bg-white/[0.04] shadow-xl shadow-black/20 backdrop-blur-xl ${className ?? ""}`}
+      className={`card-glass ${className ?? ""}`}
       {...rest}
     >
       {children}

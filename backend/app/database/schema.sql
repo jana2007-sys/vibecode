@@ -6,6 +6,30 @@
 PRAGMA foreign_keys = ON;
 
 -- ------------------------------------------------------------
+-- candidates : persistent candidate profiles
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS candidates (
+    id                  TEXT PRIMARY KEY,
+    name                TEXT NOT NULL,
+    email               TEXT,                          -- nullable: seeded/direct profiles may lack one
+    role                TEXT NOT NULL DEFAULT '',
+    years_of_experience REAL NOT NULL DEFAULT 0,
+    experience_level    TEXT NOT NULL DEFAULT 'mid',   -- junior | mid | senior
+    skills              TEXT NOT NULL DEFAULT '[]',    -- JSON array of {name, level}
+    learning_journey    TEXT NOT NULL DEFAULT '[]',    -- JSON array of LearningJourneyEntry
+    preferred_languages TEXT NOT NULL DEFAULT '[]',    -- JSON array of strings
+    focus_areas         TEXT NOT NULL DEFAULT '[]',    -- JSON array of strings
+    strengths           TEXT NOT NULL DEFAULT '[]',    -- JSON array of strings
+    notes               TEXT NOT NULL DEFAULT '',
+    created_at          TEXT NOT NULL,
+    updated_at          TEXT NOT NULL
+);
+
+-- Emails are unique where present (SQLite treats NULLs as distinct, so this
+-- index never rejects rows created without an email).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_candidates_email ON candidates(email);
+
+-- ------------------------------------------------------------
 -- sessions : one interview run per candidate + curriculum
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS sessions (

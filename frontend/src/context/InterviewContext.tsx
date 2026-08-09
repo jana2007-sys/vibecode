@@ -23,6 +23,7 @@ import {
 import { api, parseInterviewResponse } from "../services/api";
 import { describeError } from "../services/http";
 import type { CandidateProfile } from "../types/candidate";
+import { toWireProfile } from "../types/candidate";
 import type { ChatMessage } from "../types/interview";
 import type { InterviewFeedback } from "../types/feedback";
 import { EMPTY_SESSION, type InterviewSession } from "../types/session";
@@ -108,7 +109,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
 
     const sessionId = createId();
     try {
-      const raw = await api.startInterview(sessionId, candidate);
+      const raw = await api.startInterview(sessionId, toWireProfile(candidate));
       const response = parseInterviewResponse(raw);
       setSession({
         sessionId,

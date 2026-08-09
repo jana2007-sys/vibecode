@@ -29,7 +29,8 @@ from app.services.evaluation_engine import (
     EvaluationEngine,
 )
 from app.services.gemini_service import GeminiService
-from app.services.prompt_builder import EVALUATION_SCHEMA, PromptBuilder
+from app.services.prompt_builder import EVALUATION_SCHEMA, PromptBuilder, VERIFICATION_SCHEMA
+from app.services.verification_service import AIVerifierEnsemble
 from app.utils.config import Settings
 
 EXPECTS = ["immutable", "mutable"]
@@ -548,6 +549,144 @@ class TestAiEvaluation:
     def test_empty_answer_never_calls_gemini(self, tmp_path: Path) -> None:
         gemini = _mock_gemini({"score": 9.0, "covered": [], "missing": [], "reasoning": "", "feedback": ""})
         ev = _build_ai_engine(tmp_path, gemini).evaluate_answer_detail(
+            "s1", "topic-python", "py-q1", "   ", expects=EXPECTS, question=QUESTION
+        )
+        gemini.generate_json.assert_not_called()
+        assert ev.score == 0.0
+        assert ev.completeness == COMPLETENESS_EMPTY
+
+
+# --- Multi-AI verification ensemble ------------------------------------------
+
+
+def _verifier_payload(is_correct: bool, score: float, reasoning: str = "r", feedback: str = "f") -> dict:
+    return {
+        "is_correct": is_correct,
+        "score": score,
+        "reasoning": reasoning,
+        "feedback": feedback,
+    }
+
+
+def _mock_panel_gemini(*results) -> mock.MagicMock:
+    """A gemini mock that yields ``results`` in call order to the verifier panel."""
+    gemini = mock.MagicMock()
+    gemini.enabled = True
+    gemini.generate_json.side_effect = list(results)
+    return gemini
+
+
+def _build_verifier_engine(
+    tmp_path: Path,
+    gemini,
+    session_id: str = "s1",
+    db_name: str = "verifier_evaluation.db",
+    models: tuple[str, ...] = ("ai-a", "ai-b", "ai-c"),
+) -> EvaluationEngine:
+    """An engine whose evaluation is gated by a multi-AI verifier panel."""
+    db = Database(tmp_path / db_name)
+    db.initialize()
+    SessionRepository(db).create(
+        session_id=session_id,
+        candidate_id="candidate-001",
+        curriculum_id="curriculum-001",
+        now=utc_now(),
+    )
+    verifier = AIVerifierEnsemble(
+        gemini_service=gemini,
+        prompt_builder=PromptBuilder(),
+        models=list(models),
+    )
+    return EvaluationEngine(
+        gemini_service=gemini,
+        score_repository=ScoreRepository(db),
+        message_repository=MessageRepository(db),
+        prompt_builder=PromptBuilder(),
+        verifier=verifier,
+    )
+
+
+class TestVerifierEvaluation:
+    def test_majority_consensus_score_is_adopted(self, tmp_path: Path) -> None:
+        gemini = _mock_panel_gemini(
+            _verifier_payload(True, 9.0),
+            _verifier_payload(True, 8.0),
+            _verifier_payload(False, 2.0),
+        )
+        ev = _build_verifier_engine(tmp_path, gemini).evaluate_answer_detail(
+            "s1", "topic-python", "py-q1",
+            "A tuple is immutable while a list is mutable.",
+            expects=EXPECTS,
+            question=QUESTION,
+        )
+        assert ev.score == 8.5
+        assert ev.reasoning and "2 of 3" in ev.reasoning
+        assert ev.feedback
+        assert ev.matched_concepts == ["immutable", "mutable"]
+        assert ev.missing_concepts == []
+        assert ev.completeness == COMPLETENESS_COMPLETE
+
+    def test_rejected_answer_gets_low_consensus_mark(self, tmp_path: Path) -> None:
+        gemini = _mock_panel_gemini(
+            _verifier_payload(True, 8.0),
+            _verifier_payload(False, 3.0),
+            _verifier_payload(False, 2.0),
+        )
+        ev = _build_verifier_engine(tmp_path, gemini).evaluate_answer_detail(
+            "s1", "topic-python", "py-q1",
+            "A tuple is immutable while a list is mutable.",
+            expects=EXPECTS,
+            question=QUESTION,
+        )
+        assert ev.score == 2.5
+        assert ev.completeness == COMPLETENESS_PARTIAL
+
+    def test_verifier_uses_verification_schema_per_model(self, tmp_path: Path) -> None:
+        gemini = _mock_panel_gemini(
+            _verifier_payload(True, 9.0),
+            _verifier_payload(True, 8.0),
+            _verifier_payload(True, 7.0),
+        )
+        _build_verifier_engine(tmp_path, gemini).evaluate_answer_detail(
+            "s1", "topic-python", "py-q1",
+            "A tuple is immutable while a list is mutable.",
+            expects=EXPECTS,
+            question=QUESTION,
+        )
+        assert gemini.generate_json.call_count == 3
+        for call in gemini.generate_json.call_args_list:
+            assert call.args[1] == VERIFICATION_SCHEMA
+        prompt = gemini.generate_json.call_args.args[0]
+        assert QUESTION["text"] in prompt
+
+    def test_all_verifiers_failing_falls_back_to_deterministic(self, tmp_path: Path) -> None:
+        from app.utils.errors import LLMError
+
+        gemini = _mock_panel_gemini(LLMError("a"), LLMError("b"), LLMError("c"))
+        ev = _build_verifier_engine(tmp_path, gemini).evaluate_answer_detail(
+            "s1", "topic-python", "py-q1",
+            "A tuple is immutable while a list is mutable.",
+            expects=EXPECTS,
+            question=QUESTION,
+        )
+        assert ev.score == 10.0
+        assert ev.reasoning is None
+
+    def test_disabled_gemini_keeps_deterministic_even_with_panel(self, tmp_path: Path) -> None:
+        gemini = _mock_panel_gemini(_verifier_payload(True, 9.0))
+        gemini.enabled = False
+        ev = _build_verifier_engine(tmp_path, gemini).evaluate_answer_detail(
+            "s1", "topic-python", "py-q1",
+            "A tuple is immutable while a list is mutable.",
+            expects=EXPECTS,
+            question=QUESTION,
+        )
+        gemini.generate_json.assert_not_called()
+        assert ev.score == 10.0
+
+    def test_empty_answer_never_queries_the_panel(self, tmp_path: Path) -> None:
+        gemini = _mock_panel_gemini(_verifier_payload(True, 9.0))
+        ev = _build_verifier_engine(tmp_path, gemini).evaluate_answer_detail(
             "s1", "topic-python", "py-q1", "   ", expects=EXPECTS, question=QUESTION
         )
         gemini.generate_json.assert_not_called()

@@ -59,3 +59,24 @@ class SessionRepository(BaseRepository):
         """Return all sessions ordered by most recently updated."""
         with self._db.connection() as conn:
             return conn.execute("SELECT * FROM sessions ORDER BY updated_at DESC").fetchall()
+
+    def list_by_candidate(self, candidate_id: str) -> list[dict]:
+        """Return all sessions for a candidate, most recently updated first."""
+        with self._db.connection() as conn:
+            return conn.execute(
+                "SELECT * FROM sessions WHERE candidate_id = ? ORDER BY updated_at DESC",
+                (candidate_id,),
+            ).fetchall()
+
+    def delete_by_candidate(self, candidate_id: str) -> int:
+        """Delete every session for a candidate; returns the number removed.
+
+        The schema declares ``ON DELETE CASCADE`` for messages, scores and
+        feedback, so those rows are removed with their sessions.
+        """
+        with self._db.connection() as conn:
+            cursor = conn.execute(
+                "DELETE FROM sessions WHERE candidate_id = ?",
+                (candidate_id,),
+            )
+        return cursor.rowcount

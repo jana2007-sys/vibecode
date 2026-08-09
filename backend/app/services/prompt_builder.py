@@ -62,6 +62,18 @@ EVALUATION_SCHEMA: dict = {
     "required": ["score", "covered", "missing", "reasoning", "feedback"],
 }
 
+#: Structured JSON contract for one AI's independent answer verification.
+VERIFICATION_SCHEMA: dict = {
+    "type": "OBJECT",
+    "properties": {
+        "is_correct": {"type": "BOOLEAN"},
+        "score": {"type": "NUMBER"},
+        "reasoning": {"type": "STRING"},
+        "feedback": {"type": "STRING"},
+    },
+    "required": ["is_correct", "score", "reasoning", "feedback"],
+}
+
 #: How many recent transcript turns to include for context, and per-turn cap.
 MAX_CONTEXT_TURNS = 10
 MAX_TURN_CHARS = 500
@@ -166,6 +178,28 @@ class PromptBuilder:
         score plus grounded covered/missing concepts and feedback.
         """
         template = self.load_template("evaluation")
+        context_block = self._format_evaluation_context(
+            session_id, question, answer, deterministic
+        )
+        return template.strip() + "\n\n" + context_block
+
+    def build_verification_prompt(
+        self,
+        *,
+        session_id: str,
+        question: dict,
+        answer: str,
+        deterministic: dict,
+    ) -> str:
+        """Compose the prompt for one AI's independent answer verification.
+
+        Grounds the verdict in the same context block as the evaluation prompt:
+        the current question, its expected concepts, the candidate's actual
+        answer, and the deterministic coverage signal. The model independently
+        judges whether the answer is correct and returns a boolean verdict plus
+        a 0-10 mark, reasoning, and candidate-facing feedback.
+        """
+        template = self.load_template("verification")
         context_block = self._format_evaluation_context(
             session_id, question, answer, deterministic
         )

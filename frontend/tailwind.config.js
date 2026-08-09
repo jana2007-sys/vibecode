@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: "class",
   content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
   theme: {
     extend: {
@@ -9,19 +10,23 @@ export default {
       },
       colors: {
         brand: {
-          DEFAULT: "#6366F1",
-          light: "#818CF8",
-          dark: "#4F46E5",
+          DEFAULT: "#14B8A6",
+          light: "#5EEAD4",
+          dark: "#0D9488",
         },
         ink: {
-          950: "#06080F",
-          900: "#0A0E1A",
-          800: "#101627",
+          950: "#071A2B",
+          900: "#0B2538",
+          800: "#0D2F43",
+          700: "#102F43",
+          600: "#153F52",
         },
       },
       boxShadow: {
-        glow: "0 0 40px -8px rgba(99, 102, 241, 0.35)",
-        "glow-strong": "0 0 60px -10px rgba(139, 92, 246, 0.45)",
+        glow: "0 0 40px -8px rgba(20, 184, 166, 0.35)",
+        "glow-strong": "0 0 60px -10px rgba(6, 182, 212, 0.45)",
+        "glow-cyan": "0 0 45px -12px rgba(34, 211, 238, 0.45)",
+        "glow-teal": "0 0 45px -12px rgba(20, 184, 166, 0.45)",
       },
       keyframes: {
         "fade-up": {

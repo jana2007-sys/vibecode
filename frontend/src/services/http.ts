@@ -5,8 +5,26 @@ and consistent `ApiError` types so pages can render useful messages without
 touching fetch directly.
 */
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL ??
+  import.meta.env.VITE_API_BASE_URL ??
+  "/api";
+
+/** Normalize the API base URL: always ends with "/api".
+ *
+ * Local dev sets the full path (http://127.0.0.1:8000/api). Hosting services
+ * like Render inject just the backend origin (https://intervue-api.onrender.com),
+ * so we append "/api" when it is missing.
+ */
+const BASE_URL = API_BASE_URL.endsWith("/api")
+  ? API_BASE_URL
+  : `${API_BASE_URL.replace(/\/+$/, "")}/api`;
 const DEFAULT_TIMEOUT_MS = 30000;
+
+/** Build an absolute API URL (used for direct downloads / link targets). */
+export function buildUrl(path: string): string {
+  return `${BASE_URL}${path}`;
+}
 
 /** Thrown for every HTTP / network / malformed-response failure. */
 export class ApiError extends Error {
@@ -99,6 +117,31 @@ export const http = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  del: <T>(path: string) =>
+    request<T>(path, {
+      method: "DELETE",
+    }),
+  /** Fetch a binary payload (e.g. a PDF) as a blob. */
+  getBlob: async (path: string): Promise<Blob> => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+    let response: Response;
+    try {
+      response = await fetch(`${BASE_URL}${path}`, { signal: controller.signal });
+    } catch {
+      throw new ApiError(
+        "Unable to reach the interview service. Check that the backend is running and try again.",
+        0,
+        "network_error"
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!response.ok) {
+      throw new ApiError(`Request failed with status ${response.status}`, response.status);
+    }
+    return response.blob();
+  },
 };
 
 export { describeError };

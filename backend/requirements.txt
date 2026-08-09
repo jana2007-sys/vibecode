@@ -8,6 +8,13 @@ pydantic-settings>=2.7.0
 # Gemini integration — current official Google GenAI SDK (NOT the legacy google-generativeai).
 google-genai>=2.17.0,<3.0.0
 
+# PDF report generation
+reportlab>=4.2.0
+
+# PostgreSQL driver for production (DATABASE_URL=postgres://...).
+# SQLite remains the default local backend and needs no extra driver.
+psycopg[binary]>=3.1.0
+
 # Dev / test
 pytest>=8.0.0
 httpx>=0.27.0

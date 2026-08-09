@@ -23,15 +23,16 @@ export function SectionHeading({
   return (
     <div className={`flex flex-col gap-3 ${alignClasses} ${className ?? ""}`}>
       {eyebrow ? (
-        <span className="inline-flex items-center gap-2 rounded-full border border-indigo-400/30 bg-indigo-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-indigo-300">
+        <span className="inline-flex items-center gap-2 rounded-full border border-teal-400/40 bg-teal-50 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-teal-700 shadow-[0_0_20px_-6px_rgba(20,184,166,0.35)] dark:border-teal-400/30 dark:bg-teal-500/10 dark:text-teal-200">
+          <span className="h-1.5 w-1.5 rounded-full bg-gradient-to-r from-teal-500 to-cyan-500 dark:from-teal-400 dark:to-cyan-400" />
           {eyebrow}
         </span>
       ) : null}
-      <h2 className="text-balance text-3xl font-bold tracking-tight text-white sm:text-4xl">
+      <h2 className="text-balance text-3xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-4xl">
         {title}
       </h2>
       {subtitle ? (
-        <p className="max-w-2xl text-pretty text-base leading-relaxed text-slate-400">
+        <p className="max-w-2xl text-pretty text-base leading-relaxed text-slate-500 dark:text-slate-400">
           {subtitle}
         </p>
       ) : null}

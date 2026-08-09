@@ -4,6 +4,7 @@ import { Landing } from "./pages/Landing";
 import { CandidateSelection } from "./pages/CandidateSelection";
 import { Interview } from "./pages/Interview";
 import { Report } from "./pages/Report";
+import { History } from "./pages/History";
 import { NotFound } from "./pages/NotFound";
 
 export default function App() {
@@ -14,6 +15,7 @@ export default function App() {
         <Route path="/candidates" element={<CandidateSelection />} />
         <Route path="/interview" element={<Interview />} />
         <Route path="/report" element={<Report />} />
+        <Route path="/history" element={<History />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>

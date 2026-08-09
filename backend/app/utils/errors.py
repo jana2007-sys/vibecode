@@ -28,6 +28,13 @@ class NotFoundError(InterVueError):
     code = "not_found"
 
 
+class PermissionError(InterVueError):
+    """Raised when an action is not permitted for the given resource."""
+
+    status_code = 403
+    code = "permission_denied"
+
+
 class ValidationError(InterVueError):
     """Raised when business-rule validation fails."""
 

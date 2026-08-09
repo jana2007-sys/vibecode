@@ -9,9 +9,10 @@ frontend depends only on the interactive contract. The base URL comes from
 `VITE_API_BASE_URL` (never hardcoded).
 */
 
-import type { CandidateProfile } from "../types/candidate";
+import type { Candidate, CandidateCreate, CandidateProfile } from "../types/candidate";
 import type { InterviewResponse } from "../types/interview";
-import { http } from "./http";
+import type { InterviewHistory, InterviewReport } from "../types/report";
+import { buildUrl, http } from "./http";
 
 /** Coerce an unknown JSON body into the contract shape, or throw. */
 export function parseInterviewResponse(value: unknown): InterviewResponse {
@@ -65,4 +66,28 @@ export const api = {
 
   continueInterview: (sessionId: string, message: string) =>
     http.post<unknown>("/interview", { sessionId, message }),
+
+  listCandidates: () => http.get<{ items: Candidate[]; total: number }>("/candidates"),
+
+  createCandidate: (body: CandidateCreate) =>
+    http.post<Candidate>("/candidates", body),
+
+  getCandidateHistory: (candidateId: string) =>
+    http.get<InterviewHistory>(`/candidates/${candidateId}/interviews`),
+
+  clearHistory: (candidateId: string) =>
+    http.del<{ deleted: boolean; deleted_sessions: number }>(
+      `/candidates/${candidateId}/interviews`
+    ),
+
+  deleteCandidate: (candidateId: string) =>
+    http.del<{ deleted: boolean; deleted_sessions: number }>(
+      `/candidates/${candidateId}`
+    ),
+
+  getReport: (candidateId: string, sessionId: string) =>
+    http.get<InterviewReport>(`/candidates/${candidateId}/interviews/${sessionId}/report`),
+
+  reportPdfUrl: (candidateId: string, sessionId: string) =>
+    buildUrl(`/candidates/${candidateId}/interviews/${sessionId}/report/pdf`),
 };
