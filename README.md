@@ -2,6 +2,14 @@
 
 > **Tagline:** Adaptive AI Technical Interview Agent
 
+## 🌐 Live Demo
+
+The project is deployed on Render:
+
+- **App:** https://intervue-frontend-tnyj.onrender.com
+- **API:** https://intervue-api-jzr9.onrender.com (docs at `/docs`)
+- **API health:** https://intervue-api-jzr9.onrender.com/api/health
+
 InterVue AI conducts personalized, conversational technical interviews based on a
 candidate's learning journey. It remembers previous conversations, adapts questions
 to candidate answers, asks intelligent follow-ups, and generates structured feedback.
