@@ -1,19 +1,25 @@
 # Render Blueprint — one-click deployment for InterVue AI.
 #
-# Creates: a PostgreSQL database, the FastAPI backend (Web Service), and the
-# built React frontend (Static Site). Deploy with the "Blueprint" option in the
-# Render dashboard, or via the Render CLI:
+# Creates: a managed PostgreSQL database, the FastAPI backend (Web Service),
+# and the built React frontend (Static Site). Deploy with the "Blueprint"
+# option in the Render dashboard, or via the Render CLI:
 #   render blueprint launch
 #
-# Notes:
-#  * DATABASE_URL is injected from the managed PostgreSQL instance. When the
-#    backend sees a postgres:// DSN it automatically uses PostgreSQL (schema is
-#    backend/app/database/schema_postgres.sql).
-#  * GEMINI_API_KEY is intentionally NOT hardcoded here. Set it via a Render
-#    Secret File / environment group, or leave the deterministic evaluator on.
-#  * CORS_ORIGINS is wired to the frontend service URL automatically so API
-#    calls from the deployed UI are always allowed.
-#  * The SPA rewrites every route to /index.html so React Router works on
+# Environment wiring (Render Blueprint schema):
+#  * DATABASE_URL  — injected from the managed PostgreSQL instance via
+#    fromDatabase.connectionString. When the backend sees a postgres:// DSN it
+#    automatically uses PostgreSQL (backend/app/database/schema_postgres.sql).
+#  * CORS_ORIGINS  — resolved from the deployed frontend's own public URL.
+#    fromService does NOT support property: url, so we reference the platform
+#    variable RENDER_EXTERNAL_URL of the frontend service via envVarKey, which
+#    Render fills with https://intervue-frontend.onrender.com.
+#  * VITE_API_URL  — resolved the same way from the backend's RENDER_EXTERNAL_URL
+#    (https://intervue-api.onrender.com). frontend/src/services/http.ts already
+#    normalizes a bare origin to .../api, so the UI calls
+#    https://intervue-api.onrender.com/api. No manual env var is required.
+#  * GEMINI_API_KEY — intentionally NOT hardcoded here. Set it in the Render
+#    dashboard (or leave the deterministic evaluator on).
+#  * The SPA rewrite sends every route to /index.html so React Router works on
 #    refresh / deep links.
 
 databases:
@@ -42,7 +48,7 @@ services:
         fromService:
           name: intervue-frontend
           type: web
-          property: url
+          envVarKey: RENDER_EXTERNAL_URL
       - key: GEMINI_ENABLED
         value: "false"
 
@@ -58,7 +64,7 @@ services:
         fromService:
           name: intervue-api
           type: web
-          property: url
+          envVarKey: RENDER_EXTERNAL_URL
     routes:
       - type: rewrite
         source: /*
