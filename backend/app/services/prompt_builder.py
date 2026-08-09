@@ -49,6 +49,19 @@ FEEDBACK_SCHEMA: dict = {
     "required": ["overall_summary", "strengths", "improvement_areas", "next_steps"],
 }
 
+#: Structured JSON contract for semantic per-answer evaluation.
+EVALUATION_SCHEMA: dict = {
+    "type": "OBJECT",
+    "properties": {
+        "score": {"type": "NUMBER"},
+        "covered": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "missing": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "reasoning": {"type": "STRING"},
+        "feedback": {"type": "STRING"},
+    },
+    "required": ["score", "covered", "missing", "reasoning", "feedback"],
+}
+
 #: How many recent transcript turns to include for context, and per-turn cap.
 MAX_CONTEXT_TURNS = 10
 MAX_TURN_CHARS = 500
@@ -137,12 +150,26 @@ class PromptBuilder:
         """
         raise NotImplementedError("Prompt building will be implemented later.")
 
-    def build_evaluation_prompt(self, session_id: str, answer: str) -> str:
-        """Compose the prompt for scoring a candidate answer.
+    def build_evaluation_prompt(
+        self,
+        *,
+        session_id: str,
+        question: dict,
+        answer: str,
+        deterministic: dict,
+    ) -> str:
+        """Compose the prompt for semantic evaluation of a candidate answer.
 
-        Placeholder: no prompt construction yet.
+        Grounds the evaluation in the current question, its expected concepts,
+        the candidate's actual answer, and the deterministic coverage signal.
+        The model judges correctness (not keyword matching) and returns a 0-10
+        score plus grounded covered/missing concepts and feedback.
         """
-        raise NotImplementedError("Prompt building will be implemented later.")
+        template = self.load_template("evaluation")
+        context_block = self._format_evaluation_context(
+            session_id, question, answer, deterministic
+        )
+        return template.strip() + "\n\n" + context_block
 
     def build_feedback_prompt(self, session_id: str, *, context: dict) -> str:
         """Compose the prompt for generating the final report narrative.
@@ -204,6 +231,44 @@ class PromptBuilder:
             role = str(turn.get("role", "unknown"))
             content = str(turn.get("content", ""))[:MAX_TURN_CHARS]
             lines.append(f"  {role}: {content}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _format_evaluation_context(
+        session_id: str,
+        question: dict,
+        answer: str,
+        deterministic: dict,
+    ) -> str:
+        """Render the dynamic context block appended to the evaluation template.
+
+        Supplies the model with the question, its expected concepts, the
+        candidate's actual answer, and the deterministic coverage signal so the
+        semantic evaluation stays grounded in the curriculum.
+        """
+        question = question or {}
+        deterministic = deterministic or {}
+        expected = ", ".join(question.get("expects", []) or [])
+        covered = ", ".join(deterministic.get("covered", []) or [])
+        missing = ", ".join(deterministic.get("missing", []) or [])
+
+        lines = [
+            "=== CONTEXT ===",
+            f"session_id: {session_id}",
+            "",
+            "CURRENT QUESTION",
+            f"  id: {question.get('curriculum_question_id', '')}",
+            f"  text: {question.get('text', '')}",
+            f"  difficulty: {question.get('difficulty', '')}",
+            f"  expected concepts: {expected}",
+            "",
+            "CANDIDATE'S ANSWER",
+            f"  {answer or ''}",
+            "",
+            "DETERMINISTIC COVERAGE SIGNAL",
+            f"  covered concepts: {covered or '(none)'}",
+            f"  missing concepts: {missing or '(none)'}",
+        ]
         return "\n".join(lines)
 
     @staticmethod

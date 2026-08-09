@@ -464,7 +464,11 @@ class TestEngineIntegration:
         assert len([m for m in messages if m["role"] == "candidate"]) == 2
         assert len([m for m in messages if m["metadata"].get("kind") == "follow_up"]) == 1
 
-        assert len(stack.score_repo.list_by_session("sess-persist")) == 2
+        # A follow-up answers the same primary question; it must not create a
+        # second score row that would be double-counted in the averages.
+        scores = stack.score_repo.list_by_session("sess-persist")
+        assert len(scores) == 1
+        assert scores[0]["question_id"] == questions[0]["curriculum_question_id"]
 
     def test_gemini_failure_falls_back_to_deterministic_follow_up(self, tmp_path: Path) -> None:
         stack = _build_stack(tmp_path, _mock_gemini(error=LLMError("rate limited")))

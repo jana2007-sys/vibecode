@@ -69,6 +69,18 @@ export const CURRICULUM: CurriculumData = {
           id: "py-010",
           text: "How would you design a decorator that caches function results?",
         },
+        {
+          id: "py-011",
+          text: "How do you unpack a tuple into separate variables in Python?",
+        },
+        {
+          id: "py-012",
+          text: "What is the difference between a shallow copy and a deep copy?",
+        },
+        {
+          id: "py-013",
+          text: "How would you optimize a Python function that runs in a hot loop?",
+        },
       ],
     },
     {
@@ -114,6 +126,18 @@ export const CURRICULUM: CurriculumData = {
         {
           id: "db-010",
           text: "How would you design a database schema to support sharding?",
+        },
+        {
+          id: "db-011",
+          text: "What is the difference between a primary key and a unique constraint?",
+        },
+        {
+          id: "db-012",
+          text: "How does database indexing affect INSERT and UPDATE performance?",
+        },
+        {
+          id: "db-013",
+          text: "How would you design a database to handle millions of writes per second?",
         },
       ],
     },
@@ -161,6 +185,18 @@ export const CURRICULUM: CurriculumData = {
           id: "sd-010",
           text: "What is a CDN and why would you use one?",
         },
+        {
+          id: "sd-011",
+          text: "What is the difference between synchronous and asynchronous communication?",
+        },
+        {
+          id: "sd-012",
+          text: "How would you design an API rate limiter?",
+        },
+        {
+          id: "sd-013",
+          text: "Design a system that serves personalized recommendations at scale.",
+        },
       ],
     },
     {
@@ -206,6 +242,18 @@ export const CURRICULUM: CurriculumData = {
         {
           id: "al-010",
           text: "Explain breadth-first versus depth-first traversal.",
+        },
+        {
+          id: "al-011",
+          text: "What is the difference between a hash set and a hash map?",
+        },
+        {
+          id: "al-012",
+          text: "How would you find two numbers in an array that sum to a target?",
+        },
+        {
+          id: "al-013",
+          text: "Explain how you would implement a least-recently-used (LRU) cache.",
         },
       ],
     },

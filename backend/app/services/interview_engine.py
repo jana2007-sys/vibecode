@@ -104,7 +104,15 @@ class InterviewEngine:
 
         curriculum = self._curriculum.load_curriculum(self._default_curriculum_id)
         analysis = self._analyzer.analyze_profile(candidate)
-        plan = self._planner.plan_for(analysis, curriculum)
+        # Seed the deck with the session id so every interview draws a fresh
+        # set of questions from the bank: the same profile re-run (or a demo
+        # of several candidates) never repeats the identical questions. The
+        # seed is deterministic per session, so a session's plan is stable.
+        plan = self._planner.plan_for(
+            analysis,
+            curriculum,
+            variety_seed=f"{analysis.candidate_id}:{session_id}",
+        )
 
         if existing is None:
             self._sessions.create_session(
@@ -166,13 +174,16 @@ class InterviewEngine:
         self._persist_candidate(session_id, answer, question=current, kind="answer")
 
         covered, missing = self._evaluator.concept_coverage(answer, current["expects"])
-        score = self._evaluator.evaluate_answer(
+        evaluation = self._evaluator.evaluate_answer_detail(
             session_id,
             current["topic_id"],
             current["curriculum_question_id"],
             answer,
             expects=current["expects"],
+            persist=phase == "question",
+            question=current,
         )
+        score = evaluation.score
         context["evaluations"].append(
             {
                 "question_id": current["curriculum_question_id"],

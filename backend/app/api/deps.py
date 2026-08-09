@@ -165,12 +165,14 @@ def get_evaluation_engine(
     gemini_service: Annotated[GeminiService, Depends(get_gemini_service)],
     score_repository: Annotated[ScoreRepository, Depends(get_score_repository)],
     message_repository: Annotated[MessageRepository, Depends(get_message_repository)],
+    prompt_builder: Annotated[PromptBuilder, Depends(get_prompt_builder)],
 ) -> EvaluationEngine:
     """Provide the EvaluationEngine that scores candidate answers."""
     return EvaluationEngine(
         gemini_service=gemini_service,
         score_repository=score_repository,
         message_repository=message_repository,
+        prompt_builder=prompt_builder,
     )
 
 

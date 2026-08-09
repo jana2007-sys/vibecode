@@ -314,7 +314,12 @@ class TestCustomProfilePipeline:
         assert len({q["curriculum_question_id"] for q in context["asked_questions"]}) == 8
 
     def test_predefined_candidate_api_plan_matches_pinned_contract(self, stack) -> None:
-        """Regression: the API path still returns candidate-001's pinned plan."""
+        """Regression: the API path still returns candidate-001's pinned plan.
+
+        Decks are seeded per session (``<candidate_id>:<session_id>``) so every
+        interview draws a fresh question set; this pins the deterministic deck
+        the API must return for the ``custom-pinned`` session.
+        """
         client = _api_client(stack)
         profile = _candidates()["candidate-001"]
         resp = client.post(
@@ -323,7 +328,19 @@ class TestCustomProfilePipeline:
         )
         assert resp.status_code == 200
         plan_ids = [q["curriculum_question_id"] for q in _context(stack, "custom-pinned")["plan"]["questions"]]
-        assert plan_ids == EXPECTED_QUESTION_IDS["candidate-001"]
+        assert plan_ids == [
+            "sd-011", "db-009", "py-011", "al-011", "sd-007", "db-003", "sd-006", "sd-001",
+        ]
+
+    def test_same_profile_gets_a_fresh_deck_in_a_new_session(self, stack) -> None:
+        """Re-running the same candidate profile re-draws the deck per session."""
+        profile = _candidates()["candidate-001"]
+        stack.engine.start("fresh-deck-1", profile)
+        stack.engine.start("fresh-deck-2", profile)
+        first = [q["curriculum_question_id"] for q in _context(stack, "fresh-deck-1")["plan"]["questions"]]
+        second = [q["curriculum_question_id"] for q in _context(stack, "fresh-deck-2")["plan"]["questions"]]
+        assert len(first) == len(second) == 8
+        assert first != second
 
 
 def _api_client(stack):

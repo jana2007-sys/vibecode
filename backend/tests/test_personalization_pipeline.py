@@ -327,11 +327,18 @@ class TestFirstQuestionFromPlan:
         assert first["text"] in resp.reply
 
 
-# --- 6. Deterministic plan across repeated starts ----------------------------
+# --- 6. Deterministic plan per session seed ----------------------------------
 
 
 class TestDeterministicAcrossStarts:
-    def test_same_candidate_same_plan_on_repeated_starts(self, stack: SimpleNamespace) -> None:
+    def test_plan_is_deterministic_per_session_seed(self, stack: SimpleNamespace) -> None:
+        """Plans are a deterministic function of (candidate, session seed).
+
+        The synthetic bank has exactly one question per (topic, tier), so the
+        seeded rotation cannot change the deck here; both sessions are planned
+        identically and remain internally stable. Deck variety per session is
+        covered by the real-bank tests (see test_interview_bank.py).
+        """
         stack.engine.start("sess-det-1", _candidate_a())
         stack.engine.start("sess-det-2", _candidate_a())
         assert _questions(stack, "sess-det-1") == _questions(stack, "sess-det-2")

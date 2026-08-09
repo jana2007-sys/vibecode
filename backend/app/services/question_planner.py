@@ -432,21 +432,29 @@ class QuestionPlanner:
              repeated. Explicitly skipped topics are excluded from coverage when
              enough non-skipped topics remain, so skipped areas are only
              revisited if they are genuinely required to build the plan;
-          2. fill pass — remaining questions in difficulty-tier order. A
-             ``difficulty_bias`` reorders the tiers (hard -> medium -> easy for
-             a senior bias) so the harder questions land early and make the cut;
-             without a bias the classic easy -> medium -> hard order applies;
-          3. variety guards (production only) — when the curriculum provides
+          2. fill pass — remaining questions picked by seeded round-robin across
+             the difficulty tiers, so every tier contributes to the deck instead
+             of the easiest tier flooding it. A ``difficulty_bias`` reorders the
+             tiers (hard -> medium -> easy for a senior bias) so the harder
+             questions land early and make the cut; without a bias the classic
+             easy -> medium -> hard rotation applies. Fills lead with the
+             top-ranked topic three times out of four and the next-ranked topic
+             on the fourth, so each plan keeps its emphasis where the candidate
+             is strongest while the seeded rotation still varies which
+             questions are drawn from that topic;
+          3. ordering — the finished deck is stable-sorted by difficulty
+             (easy first, hard last), keeping the realistic progression while
+             preserving the seeded selection order within each tier;
+          4. variety guards (production only) — when the curriculum provides
              medium or hard questions, ensure at least one of each is present,
-             swapping a late non-unique-topic question for the missing tier so
-             the harder question lands near the end (realistic progression).
+             swapping a late non-unique-topic question for the missing tier.
 
         ``variety_seed`` rotates the order questions are considered inside each
-        topic (via :meth:`_seeded_questions`), so different candidates draw
-        different questions from the bank while every structural guarantee
-        (coverage, tiers, difficulty guards, uniqueness) is preserved. A
-        ``None`` seed disables rotation and keeps the classic deterministic
-        curriculum order.
+        topic (via :meth:`_seeded_questions`), so different candidates and
+        sessions draw different questions from the bank while every structural
+        guarantee (coverage, tiers, difficulty guards, uniqueness) is
+        preserved. A ``None`` seed disables rotation and keeps the classic
+        deterministic curriculum order.
 
         ``target_count`` caps the selected size. A ``None`` target (development
         mode) selects every available question and skips the variety guards so
@@ -470,22 +478,41 @@ class QuestionPlanner:
                 selected.append((topic, question))
                 used.add(question.id)
 
-        for tier in self._tier_order(difficulty_bias):
-            tier_rank = _DIFFICULTY_RANKS[tier]
-            for topic in ordered:
-                if topic.id in skipped_ids and not include_skipped:
-                    continue
-                for question in self._seeded_questions(topic, variety_seed):
-                    if question.id in used or self._difficulty_rank(question.difficulty) != tier_rank:
-                        continue
-                    selected.append((topic, question))
-                    used.add(question.id)
-                    if target_count is not None and len(selected) >= target_count:
-                        break
-                if target_count is not None and len(selected) >= target_count:
-                    break
-            if target_count is not None and len(selected) >= target_count:
+        tiers = list(self._tier_order(difficulty_bias))
+        # Fill picks lead with the top-ranked topic three times out of four and
+        # move to the next-ranked topic on the fourth, so plans keep their
+        # emphasis where the candidate is strongest instead of spreading the
+        # deck flat. The seeded rotation still varies which questions each
+        # candidate draws from that leading topic, so two strong candidates in
+        # the same area meet different questions from the bank.
+        fill_slots = 0 if target_count is None else target_count - len(selected)
+        pattern = [0, 0, 0, 1] * (fill_slots // 4) + [0] * (fill_slots % 4)
+        pick_index = 0
+        while target_count is None or len(selected) < target_count:
+            if not tiers:
                 break
+            tier = tiers[pick_index % len(tiers)]
+            tier_rank = _DIFFICULTY_RANKS[tier]
+            start_offset = pattern[pick_index % len(pattern)] if pattern else 0
+            picked = self._pick_fill_question(
+                ordered,
+                skipped_ids,
+                include_skipped,
+                tier_rank,
+                used,
+                variety_seed=variety_seed,
+                start_offset=start_offset,
+            )
+            if picked is None:
+                # This tier is exhausted (no remaining questions of that
+                # difficulty anywhere in the deck); drop it from the rotation
+                # so other tiers keep filling toward the target.
+                tiers.remove(tier)
+                continue
+            topic, question = picked
+            selected.append((topic, question))
+            used.add(question.id)
+            pick_index += 1
 
         if target_count is None:
             return selected
@@ -493,6 +520,15 @@ class QuestionPlanner:
         self._ensure_tier("medium", selected, ordered, used, variety_seed=variety_seed)
         self._ensure_tier("hard", selected, ordered, used, variety_seed=variety_seed)
 
+        # Order the deck to match the interview's difficulty arc: default and
+        # junior plans open easy and close hard (stable, so the seeded
+        # selection order within each tier is preserved), while a hard bias
+        # opens with the hardest questions to match the senior level.
+        reverse = difficulty_bias == "hard"
+        selected.sort(
+            key=lambda item: self._difficulty_rank(item[1].difficulty),
+            reverse=reverse,
+        )
         return selected[:target_count]
 
     @staticmethod
@@ -519,6 +555,39 @@ class QuestionPlanner:
         if difficulty_bias == "hard":
             return ("hard", "medium", "easy")
         return _DIFFICULTY_ORDER
+
+    @classmethod
+    def _pick_fill_question(
+        cls,
+        ordered: list[Topic],
+        skipped_ids: set[str],
+        include_skipped: bool,
+        tier_rank: int,
+        used: set[str],
+        *,
+        variety_seed: str | None = None,
+        start_offset: int = 0,
+    ) -> tuple[Topic, QuestionTemplate] | None:
+        """Return the first unused question of ``tier_rank`` to fill.
+
+        Topics are visited in priority order starting at ``start_offset``, so a
+        fill that leads with the top-ranked topic (``start_offset`` 0) keeps the
+        plan concentrated where the candidate is strongest, while the pattern's
+        occasional next-ranked offsets spread the remaining slots over the
+        ranked topics. Explicitly skipped topics are excluded unless they are
+        required for coverage.
+        """
+        if not ordered:
+            return None
+        for offset in range(len(ordered)):
+            topic = ordered[(start_offset + offset) % len(ordered)]
+            if topic.id in skipped_ids and not include_skipped:
+                continue
+            for question in cls._seeded_questions(topic, variety_seed):
+                if question.id in used or cls._difficulty_rank(question.difficulty) != tier_rank:
+                    continue
+                return (topic, question)
+        return None
 
     def _easiest_available(
         self,
@@ -594,7 +663,8 @@ class QuestionPlanner:
 
     # --- Helpers --------------------------------------------------------------
 
-    def _difficulty_rank(self, difficulty: str) -> int:
+    @staticmethod
+    def _difficulty_rank(difficulty: str) -> int:
         """Map a curriculum difficulty label to its tier rank (unknown -> medium)."""
         return _DIFFICULTY_RANKS.get(difficulty.strip().lower(), _DIFFICULTY_RANKS["medium"])
 

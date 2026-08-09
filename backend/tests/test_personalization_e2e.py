@@ -50,13 +50,15 @@ REAL_CURRICULUM_ID = "curriculum-001"
 #: Question ids that ``candidate-001..004`` are expected to receive in order.
 #: Pinned as the deterministic personalization contract for the shipped
 #: curriculum. Plans are seeded per candidate id, so every candidate draws a
-#: distinct deck from the 52-question bank even when their profiles overlap.
+#: distinct deck from the 52-question bank even when their profiles overlap,
+#: and the seeded rotation keeps the two systems-first candidates (001 and 004)
+#: from colliding on the shared easy core.
 #: Change these only when the curriculum or planner intent changes.
 EXPECTED_QUESTION_IDS = {
-    "candidate-001": ["sd-002", "db-004", "py-004", "al-001", "sd-007", "sd-011", "sd-003", "sd-013"],
-    "candidate-002": ["py-003", "db-004", "sd-003", "al-008", "py-004", "py-011", "py-001", "py-002"],
-    "candidate-003": ["py-003", "db-001", "al-001", "sd-011", "py-001", "py-011", "py-009", "py-008"],
-    "candidate-004": ["sd-011", "py-003", "db-009", "al-002", "sd-003", "sd-002", "sd-007", "sd-001"],
+    "candidate-001": ["sd-002", "db-004", "py-004", "al-001", "sd-007", "db-003", "sd-010", "sd-013"],
+    "candidate-002": ["py-003", "db-004", "sd-003", "al-008", "py-004", "db-001", "py-006", "py-002"],
+    "candidate-003": ["py-003", "db-001", "al-001", "sd-011", "py-001", "db-011", "py-005", "py-008"],
+    "candidate-004": ["sd-011", "py-003", "db-009", "al-002", "sd-003", "py-001", "sd-012", "sd-001"],
 }
 
 #: Expected topic ranking (highest score first) per candidate.
@@ -349,18 +351,19 @@ class TestOverlapReport:
         plans = _plans_for_all(stack)
         sets = {cid: {q.curriculum_question_id for q in plan.questions} for cid, plan in plans.items()}
 
-        assert sets["candidate-001"] & sets["candidate-002"] == {"db-004", "sd-003", "py-004"}
-        assert sets["candidate-001"] & sets["candidate-003"] == {"al-001", "sd-011"}
-        assert sets["candidate-001"] & sets["candidate-004"] == {"sd-002", "sd-007", "sd-011", "sd-003"}
+        assert sets["candidate-001"] & sets["candidate-002"] == {"db-004", "py-004"}
+        assert sets["candidate-001"] & sets["candidate-003"] == {"al-001"}
+        assert sets["candidate-001"] & sets["candidate-004"] == set()
         assert sets["candidate-002"] & sets["candidate-004"] == {"py-003", "sd-003"}
-        assert sets["candidate-003"] & sets["candidate-004"] == {"sd-011", "py-003"}
+        assert sets["candidate-003"] & sets["candidate-004"] == {"py-001", "py-003", "sd-011"}
 
-        # Overlap magnitudes: seeded decks keep each candidate's topic emphasis
-        # while shrinking the shared easy core; no pair coincides anymore.
-        assert _jaccard(sets["candidate-001"], sets["candidate-004"]) > _jaccard(
+        # Overlap magnitudes: seeded rotation keeps each candidate's topic
+        # emphasis while shrinking the shared easy core, so the two
+        # systems-first candidates (001 and 004) no longer collide at all.
+        assert _jaccard(sets["candidate-001"], sets["candidate-004"]) < _jaccard(
             sets["candidate-001"], sets["candidate-002"]
         )
-        assert round(_jaccard(sets["candidate-002"], sets["candidate-003"]), 2) == round(3 / 13, 2)
+        assert round(_jaccard(sets["candidate-002"], sets["candidate-003"]), 2) == round(2 / 14, 2)
 
 
 # --- 5. Cross-candidate session isolation ------------------------------------
